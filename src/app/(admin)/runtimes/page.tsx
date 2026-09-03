@@ -32,7 +32,7 @@ export default function RuntimesPage() {
                   className="grid grid-cols-[minmax(0,1fr)_140px_120px_100px] items-center gap-4 py-4 hover:bg-muted/40"
                 >
                   <div>
-                    <div className="text-[13px] font-medium">{runtime.id.replace("runtime_", "Runtime ")}</div>
+                    <div className="text-[13px] font-medium">{runtime.id}</div>
                     <div className="mt-1 text-[13px] text-muted-foreground">{runtime.organization_name}</div>
                   </div>
                   <StatusLabel tone={tone(runtime.status)}>

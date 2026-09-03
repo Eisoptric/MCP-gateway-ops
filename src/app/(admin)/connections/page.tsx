@@ -11,6 +11,7 @@ import { useI18n } from "@/lib/i18n";
 function tone(status: string): StatusTone {
   if (["connected", "healthy", "active"].includes(status)) return "active";
   if (status === "degraded") return "degraded";
+  if (status === "none") return "paused";
   return "disconnected";
 }
 

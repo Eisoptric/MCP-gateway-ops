@@ -17,7 +17,8 @@ import { useI18n } from "@/lib/i18n";
 function tone(status: string): StatusTone {
   if (["active", "connected", "ok", "healthy"].includes(status)) return "active";
   if (["trial", "degraded", "missing"].includes(status)) return "pending";
-  return "paused";
+  if (status === "none") return "paused";
+  return "disconnected";
 }
 
 function isOrgAdmin(member: AdminMember) {

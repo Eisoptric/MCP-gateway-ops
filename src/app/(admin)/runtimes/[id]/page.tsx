@@ -27,7 +27,7 @@ export default function RuntimeDetailPage() {
         ) : (
           <>
             <h1 className="mt-4 text-[22px] font-medium tracking-tight">
-              {runtime.id.replace("runtime_", "Runtime ")}
+              {runtime.id}
             </h1>
             <p className="mt-2 text-[13px] text-muted-foreground">{runtime.organization_name}</p>
             <div className="mt-8 grid grid-cols-4 gap-8 border-y border-border py-6">
