@@ -15,7 +15,7 @@ import { formatDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 
 function tone(status: string): StatusTone {
-  if (["active", "connected", "ok", "healthy"].includes(status)) return "active";
+  if (["active", "connected", "ok", "healthy", "app"].includes(status)) return "active";
   if (["trial", "degraded", "missing"].includes(status)) return "pending";
   if (status === "none") return "paused";
   return "disconnected";
@@ -64,14 +64,15 @@ export default function OrgDetailPage() {
           </div>
           <p className="mt-2 font-mono text-[12px] text-muted-foreground">{data.id}</p>
 
-          <div className="mt-8 grid grid-cols-5 gap-6 border-y border-border py-6">
+          <div className="mt-8 grid grid-cols-6 gap-6 border-y border-border py-6">
+            <Metric label={t("orgs.kind")} value={data.kind === "organization" ? t("orgs.team") : t("orgs.personal")} />
             <Metric label={t("orgs.plan")} value={t(`orgs.${data.plan}`) === `orgs.${data.plan}` ? data.plan : t(`orgs.${data.plan}`)} />
             <Metric label={t("orgs.users")} value={String(data.user_count)} mono />
             <Metric label={t("orgs.agents")} value={String(data.agent_count)} mono />
             <Metric label={t("orgs.connections")} value={String(data.connection_count)} mono />
             <Metric
               label={t("orgs.runtime")}
-              value={data.runtime_status}
+              value={data.runtime_status === "app" ? t("orgs.app") : data.runtime_status}
               status={data.runtime_status}
             />
           </div>
@@ -102,9 +103,14 @@ export default function OrgDetailPage() {
               value={data.plan}
               onChange={(plan) => update.mutate({ plan })}
             >
-              <option value="trial">{t("orgs.trial")}</option>
-              <option value="starter">{t("orgs.starter")}</option>
-              <option value="enterprise">{t("orgs.enterprise")}</option>
+              {data.kind === "organization" ? (
+                <option value="enterprise">{t("orgs.enterprise")}</option>
+              ) : (
+                <>
+                  <option value="free">{t("orgs.free")}</option>
+                  <option value="pro">{t("orgs.pro")}</option>
+                </>
+              )}
             </SelectField>
             <Button
               variant="outline"
@@ -122,6 +128,11 @@ export default function OrgDetailPage() {
             </span>
           </div>
 
+          {data.kind === "personal" ? (
+            <p className="mt-10 max-w-xl border-t border-border pt-8 text-[13px] text-muted-foreground">
+              {t("orgs.personalMembers")}
+            </p>
+          ) : (
           <form
             className="mt-10 max-w-[640px] border-t border-border pt-8"
             onSubmit={async (event) => {
@@ -182,6 +193,7 @@ export default function OrgDetailPage() {
               {createMember.isPending ? t("orgs.adding") : t("orgs.addUser")}
             </Button>
           </form>
+          )}
 
           <section className="mt-10">
             <SectionLabel className="mb-3">{t("orgs.members")}</SectionLabel>

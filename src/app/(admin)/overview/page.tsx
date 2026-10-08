@@ -29,10 +29,10 @@ export default function OverviewPage() {
           <p className="mt-2 text-[15px] text-muted-foreground">{t("overview.subtitle")}</p>
 
           <div className="mt-12 grid grid-cols-4 gap-8 border-y border-border py-7">
-            <Stat label={t("overview.orgs")} value={String(stats?.organizations ?? 0)} />
+            <Stat label={t("overview.personal")} value={String(stats?.personal ?? 0)} />
+            <Stat label={t("overview.team")} value={String(stats?.teams ?? 0)} />
             <Stat label={t("overview.users")} value={String(stats?.users ?? 0)} />
             <Stat label={t("overview.agents")} value={String(stats?.agents ?? 0)} />
-            <Stat label={t("overview.connections")} value={String(stats?.connections ?? 0)} />
           </div>
 
           <section className="mt-10">

@@ -28,7 +28,8 @@ export default function OrgsPage() {
     admin_name: "",
     admin_password: "",
     admin_title: "Admin",
-    plan: "trial",
+    plan: "enterprise",
+    kind: "organization",
   });
 
   return (
@@ -47,7 +48,8 @@ export default function OrgsPage() {
               admin_name: form.admin_name.trim(),
               admin_password: form.admin_password,
               admin_title: form.admin_title.trim() || "Admin",
-              plan: form.plan,
+              plan: form.kind === "organization" ? "enterprise" : form.plan,
+              kind: form.kind,
             });
             setForm({
               name: "",
@@ -55,7 +57,8 @@ export default function OrgsPage() {
               admin_name: "",
               admin_password: "",
               admin_title: "Admin",
-              plan: "trial",
+              plan: "enterprise",
+              kind: "organization",
             });
           }}
         >
@@ -67,13 +70,32 @@ export default function OrgsPage() {
               onChange={(value) => setForm((current) => ({ ...current, name: value }))}
             />
             <SelectField
+              label={t("orgs.kind")}
+              value={form.kind}
+              onChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  kind: value,
+                  plan: value === "organization" ? "enterprise" : current.plan === "enterprise" ? "free" : current.plan,
+                }))
+              }
+            >
+              <option value="personal">{t("orgs.personal")}</option>
+              <option value="organization">{t("orgs.team")}</option>
+            </SelectField>
+            <SelectField
               label={t("orgs.plan")}
-              value={form.plan}
+              value={form.kind === "organization" ? "enterprise" : form.plan}
               onChange={(value) => setForm((current) => ({ ...current, plan: value }))}
             >
-              <option value="trial">{t("orgs.trial")}</option>
-              <option value="starter">{t("orgs.starter")}</option>
-              <option value="enterprise">{t("orgs.enterprise")}</option>
+              {form.kind === "organization" ? (
+                <option value="enterprise">{t("orgs.enterprise")}</option>
+              ) : (
+                <>
+                  <option value="free">{t("orgs.free")}</option>
+                  <option value="pro">{t("orgs.pro")}</option>
+                </>
+              )}
             </SelectField>
             <Field
               label={t("orgs.adminName")}
@@ -126,6 +148,8 @@ export default function OrgsPage() {
                         </StatusLabel>
                       </div>
                       <div className="mt-1 text-[12px] text-muted-foreground">
+                        {org.kind === "organization" ? t("orgs.team") : t("orgs.personal")}
+                        {" · "}
                         {t(`orgs.${org.plan}`) === `orgs.${org.plan}` ? org.plan : t(`orgs.${org.plan}`)}
                       </div>
                     </div>

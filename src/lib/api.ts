@@ -49,6 +49,8 @@ export interface AdminStats {
   users: number;
   agents: number;
   connections: number;
+  personal?: number;
+  teams?: number;
 }
 
 export interface AdminService {
@@ -80,6 +82,7 @@ export interface AdminOrg {
   name: string;
   status: string;
   plan: string;
+  kind?: string;
   deployment_mode: string;
   runtime_region: string;
   runtime_version: string;
@@ -196,6 +199,7 @@ export interface AdminUsageRow {
   organization_id: string;
   organization_name: string;
   plan: string;
+  kind?: string;
   runs: number;
   tool_calls: number;
   payments: number;
@@ -339,6 +343,7 @@ export function onboardOrg(body: {
   admin_password: string;
   admin_title?: string;
   plan?: string;
+  kind?: string;
 }) {
   return post<AdminOrgDetail>("/admin/orgs", body);
 }

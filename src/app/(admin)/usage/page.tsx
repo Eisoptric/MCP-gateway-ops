@@ -36,7 +36,11 @@ export default function UsagePage() {
                     className="grid grid-cols-[minmax(0,1fr)_100px_80px_100px_100px_100px] items-center gap-4 py-4 hover:bg-muted/40"
                   >
                     <span className="text-[13px] font-medium">{row.organization_name}</span>
-                    <span className="text-[12px] text-muted-foreground">{row.plan}</span>
+                    <span className="text-[12px] text-muted-foreground">
+                      {row.kind === "organization" ? t("orgs.team") : t("orgs.personal")}
+                      {" · "}
+                      {t(`orgs.${row.plan}`) === `orgs.${row.plan}` ? row.plan : t(`orgs.${row.plan}`)}
+                    </span>
                     <span className="font-mono text-[13px]">{row.runs}</span>
                     <span className="font-mono text-[13px]">{row.tool_calls}</span>
                     <span className="font-mono text-[13px]">{row.payments}</span>
