@@ -202,8 +202,6 @@ export interface AdminUsageRow {
   kind?: string;
   runs: number;
   tool_calls: number;
-  payments: number;
-  payment_volume: string;
 }
 
 export interface AdminSettings {
@@ -212,7 +210,6 @@ export interface AdminSettings {
   infrastructure: {
     runtime: string;
     mcp: string;
-    x402_network: string;
     secrets: { id: string; kind: string; configured: boolean }[];
   };
   admins: AdminUser[];

@@ -20,20 +20,18 @@ export default function UsagePage() {
           <p className="mt-10 text-[13px] text-muted-foreground">{t("usage.empty")}</p>
         ) : (
           <div className="mt-10">
-            <div className="grid grid-cols-[minmax(0,1fr)_100px_80px_100px_100px_100px] gap-4 border-b border-border pb-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_100px_80px_100px] gap-4 border-b border-border pb-2">
               <SectionLabel>{t("usage.org")}</SectionLabel>
               <SectionLabel>{t("usage.plan")}</SectionLabel>
               <SectionLabel>{t("usage.runs")}</SectionLabel>
               <SectionLabel>{t("usage.tools")}</SectionLabel>
-              <SectionLabel>{t("usage.payments")}</SectionLabel>
-              <SectionLabel>{t("usage.volume")}</SectionLabel>
             </div>
             <ul className="divide-y divide-border">
               {(usage.data ?? []).map((row) => (
                 <li key={row.organization_id}>
                   <Link
                     href={`/orgs/${row.organization_id}`}
-                    className="grid grid-cols-[minmax(0,1fr)_100px_80px_100px_100px_100px] items-center gap-4 py-4 hover:bg-muted/40"
+                    className="grid grid-cols-[minmax(0,1fr)_100px_80px_100px] items-center gap-4 py-4 hover:bg-muted/40"
                   >
                     <span className="text-[13px] font-medium">{row.organization_name}</span>
                     <span className="text-[12px] text-muted-foreground">
@@ -43,8 +41,6 @@ export default function UsagePage() {
                     </span>
                     <span className="font-mono text-[13px]">{row.runs}</span>
                     <span className="font-mono text-[13px]">{row.tool_calls}</span>
-                    <span className="font-mono text-[13px]">{row.payments}</span>
-                    <span className="font-mono text-[13px] text-muted-foreground">{row.payment_volume}</span>
                   </Link>
                 </li>
               ))}

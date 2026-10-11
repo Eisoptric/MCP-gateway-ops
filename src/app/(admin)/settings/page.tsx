@@ -44,7 +44,6 @@ export default function SettingsPage() {
             items={[
               [t("settings.runtime"), String(data?.infrastructure.runtime ?? "")],
               [t("settings.mcp"), String(data?.infrastructure.mcp ?? "")],
-              [t("settings.network"), String(data?.infrastructure.x402_network ?? "")],
             ]}
           />
         </section>

@@ -139,14 +139,12 @@ export const en = {
   },
   usage: {
     title: "Usage / Billing",
-    subtitle: "Platform usage by organization. Token metering can be added later; runs, tools, and x402 are recorded now.",
+    subtitle: "Platform usage by organization. Token metering can be added later; runs and tool calls are recorded now.",
     empty: "No usage yet.",
     org: "Organization",
     plan: "Plan",
     runs: "Runs",
     tools: "Tool calls",
-    payments: "x402 payments",
-    volume: "Volume",
   },
   audit: {
     title: "Platform Audit",
@@ -169,7 +167,6 @@ export const en = {
     version: "Version",
     runtime: "Runtime",
     mcp: "MCP",
-    network: "x402 network",
   },
   common: {
     loading: "Loading…",
@@ -328,14 +325,12 @@ export const zh = {
   },
   usage: {
     title: "用量 / 計費",
-    subtitle: "依組織檢視平台用量。Token 計量可之後補上；Runs、工具呼叫與 x402 已記錄。",
+    subtitle: "依組織檢視平台用量。Token 計量可之後補上；Runs 與工具呼叫已記錄。",
     empty: "尚無用量。",
     org: "組織",
     plan: "方案",
     runs: "Runs",
     tools: "工具呼叫",
-    payments: "x402 付款",
-    volume: "金額",
   },
   audit: {
     title: "平台稽核",
@@ -358,7 +353,6 @@ export const zh = {
     version: "版本",
     runtime: "Runtime",
     mcp: "MCP",
-    network: "x402 網路",
   },
   common: {
     loading: "載入中…",
