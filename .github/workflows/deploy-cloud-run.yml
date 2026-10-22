@@ -55,6 +55,9 @@ jobs:
             API_URL=${{ env.API_URL }}
 
       - name: Deploy to Cloud Run
+        env:
+          # The service's own runtime identity. Unset: it keeps the one it has.
+          RUNTIME_SERVICE_ACCOUNT: ${{ vars.RUNTIME_SERVICE_ACCOUNT }}
         run: |
           gcloud run deploy "${CLOUD_RUN_SERVICE}" \
             --project "${GCP_PROJECT_ID}" \
@@ -63,4 +66,5 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 3001 \
-            --set-env-vars "API_URL=${API_URL}"
+            --set-env-vars "API_URL=${API_URL}" \
+            ${RUNTIME_SERVICE_ACCOUNT:+--service-account "$RUNTIME_SERVICE_ACCOUNT"}
