@@ -38,3 +38,14 @@ export function formatDay(iso: string, locale: "en" | "zh" = "en") {
     day: "numeric",
   });
 }
+
+export function formatDateTime(iso: string, locale: "en" | "zh" = "en") {
+  return new Date(iso).toLocaleString(locale === "zh" ? "zh-TW" : "en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}

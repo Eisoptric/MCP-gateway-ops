@@ -229,7 +229,7 @@ function toSession(token: string, user: AuthUserResponse) {
   };
 }
 
-async function request<T>(path: string, init?: RequestInit, auth = true): Promise<T> {
+async function send(path: string, init?: RequestInit, auth = true): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type") && init?.body) {
     headers.set("Content-Type", "application/json");
@@ -257,6 +257,12 @@ async function request<T>(path: string, init?: RequestInit, auth = true): Promis
     throw new ApiError(response.status, text || response.statusText);
   }
 
+  return response;
+}
+
+async function request<T>(path: string, init?: RequestInit, auth = true): Promise<T> {
+  const response = await send(path, init, auth);
+
   if (response.status === 204) {
     return undefined as T;
   }
@@ -266,6 +272,18 @@ async function request<T>(path: string, init?: RequestInit, auth = true): Promis
 
 function get<T>(path: string) {
   return request<T>(path);
+}
+
+const PAGE_LIMIT = 500;
+
+/** Reads a paged list endpoint to the end, so a long list is never silently cut short. */
+async function getAll<T>(path: string) {
+  const rows: T[] = [];
+  for (;;) {
+    const page = await get<T[]>(`${path}?limit=${PAGE_LIMIT}&offset=${rows.length}`);
+    rows.push(...page);
+    if (page.length < PAGE_LIMIT) return rows;
+  }
 }
 
 function post<T>(path: string, body?: unknown, auth = true) {
@@ -323,14 +341,34 @@ export async function fetchMe() {
 
 export const fetchOverview = () => get<AdminOverview>("/admin/overview");
 export const fetchStats = () => get<AdminStats>("/admin/stats");
-export const fetchOrgs = () => get<AdminOrg[]>("/admin/orgs");
+export const fetchOrgs = () => getAll<AdminOrg>("/admin/orgs");
 export const fetchOrg = (id: string) => get<AdminOrgDetail>(`/admin/orgs/${id}`);
-export const fetchUsers = () => get<AdminUser[]>("/admin/users");
+export const fetchUsers = () => getAll<AdminUser>("/admin/users");
 export const fetchConnections = () => get<AdminOrgConnections[]>("/admin/connections");
 export const fetchRuntimes = () => get<AdminRuntime[]>("/admin/runtimes");
 export const fetchMcp = () => get<AdminMcp>("/admin/mcp");
-export const fetchUsage = () => get<AdminUsageRow[]>("/admin/usage");
-export const fetchAudit = () => get<AdminEvent[]>("/admin/audit");
+export const fetchUsage = (days?: number) =>
+  get<AdminUsageRow[]>(days ? `/admin/usage?days=${days}` : "/admin/usage");
+export const fetchAuditEvents = () => get<string[]>("/admin/audit/events");
+
+export interface AuditQuery {
+  limit: number;
+  offset: number;
+  organizationId?: string;
+  event?: string;
+  since?: string;
+}
+
+export async function fetchAudit(query: AuditQuery) {
+  const params = new URLSearchParams({ limit: String(query.limit), offset: String(query.offset) });
+  if (query.organizationId) params.set("organization_id", query.organizationId);
+  if (query.event) params.set("event", query.event);
+  if (query.since) params.set("since", query.since);
+  const response = await send(`/admin/audit?${params}`);
+  const items = (await response.json()) as AdminEvent[];
+  const total = Number(response.headers.get("X-Total-Count"));
+  return { items, total: Number.isFinite(total) ? Math.max(total, items.length) : items.length };
+}
 export const fetchSettings = () => get<AdminSettings>("/admin/settings");
 
 export function onboardOrg(body: {
@@ -374,6 +412,7 @@ export function updateOrgMember(
   return patch<AdminMember>(`/admin/orgs/${orgId}/members/${employeeId}`, body);
 }
 
-export function resetOrgMemberPassword(orgId: string, employeeId: string, password: string) {
-  return post<AdminMember>(`/admin/orgs/${orgId}/members/${employeeId}/password`, { password });
+/** Signs the member out everywhere and emails them a one-time code to choose a new password. */
+export function resetOrgMemberPassword(orgId: string, employeeId: string) {
+  return post<AdminMember>(`/admin/orgs/${orgId}/members/${employeeId}/password`);
 }

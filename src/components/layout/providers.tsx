@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
+import { Toaster } from "@/components/ui/toaster";
 import { useLocaleStore } from "@/stores/locale-store";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -20,6 +21,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <LocaleDocument>{children}</LocaleDocument>
+      <Toaster />
     </QueryClientProvider>
   );
 }

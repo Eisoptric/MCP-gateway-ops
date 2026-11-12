@@ -1,18 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { DataTable, type Column, type TableFilter } from "@/components/ui/data-table";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { Field, SelectField } from "@/components/ui/field";
 import { QueryGate } from "@/components/layout/query-gate";
 import { SectionLabel } from "@/components/ui/section-label";
 import { StatusLabel } from "@/components/ui/status-dot";
 import type { StatusTone } from "@/components/ui/status-dot";
 import { useCreateMember, useOrg, useResetMemberPassword, useUpdateMember, useUpdateOrg } from "@/hooks/use-admin";
-import { apiErrorDetail, type AdminMember } from "@/lib/api";
+import { apiErrorDetail, type AdminAgent, type AdminMember } from "@/lib/api";
 import { formatDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { toast } from "@/stores/toast-store";
+
+/** The change waiting for the operator to confirm. */
+type PendingChange =
+  | { kind: "status" }
+  | { kind: "plan"; plan: string }
+  | { kind: "disable"; member: AdminMember }
+  | { kind: "reset"; member: AdminMember };
 
 function tone(status: string): StatusTone {
   if (["active", "connected", "ok", "healthy", "app"].includes(status)) return "active";
@@ -28,7 +38,7 @@ function isOrgAdmin(member: AdminMember) {
 export default function OrgDetailPage() {
   const params = useParams<{ id: string }>();
   const id = (Array.isArray(params.id) ? params.id[0] : params.id) ?? "";
-  const { t, locale } = useI18n();
+  const { t, tOr, locale } = useI18n();
   const org = useOrg(id);
   const update = useUpdateOrg(id);
   const createMember = useCreateMember(id);
@@ -41,11 +51,180 @@ export default function OrgDetailPage() {
     title: "Operator",
     role: "operator",
   });
-  const [resetMemberId, setResetMemberId] = useState<string | null>(null);
-  const [newPassword, setNewPassword] = useState("");
-  const [resetDoneId, setResetDoneId] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingChange | null>(null);
   const data = org.data;
   const activeAdminCount = data?.members.filter((member) => member.status === "active" && isOrgAdmin(member)).length ?? 0;
+  const { mutate: setMemberStatus, isPending: memberUpdating } = updateMember;
+
+  const memberColumns = useMemo<Column<AdminMember>[]>(
+    () => [
+      {
+        id: "name",
+        header: t("orgs.userName"),
+        sortValue: (member) => member.name,
+        cell: (member) => (
+          <div className="min-w-0">
+            <div className="font-medium">{member.name}</div>
+            <div className="mt-0.5 text-[12px] text-muted-foreground">{member.email}</div>
+          </div>
+        ),
+      },
+      {
+        id: "role",
+        header: t("orgs.role"),
+        sortValue: (member) => member.role,
+        cell: (member) => (
+          <span className="text-muted-foreground">{tOr(`orgs.${member.role}`, member.role)}</span>
+        ),
+      },
+      {
+        id: "status",
+        header: t("orgs.status"),
+        sortValue: (member) => member.status,
+        cell: (member) => (
+          <StatusLabel tone={member.status === "active" ? "active" : "paused"}>
+            {t(`orgs.${member.status === "active" ? "active" : "disabled"}`)}
+          </StatusLabel>
+        ),
+      },
+      {
+        id: "actions",
+        header: t("orgs.actions"),
+        align: "right",
+        cell: (member) => {
+          const lastAdmin = member.status === "active" && isOrgAdmin(member) && activeAdminCount <= 1;
+          return (
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={memberUpdating || lastAdmin}
+                title={lastAdmin ? t("orgs.lastAdmin") : undefined}
+                onClick={() => {
+                  if (member.status === "active") {
+                    setPending({ kind: "disable", member });
+                    return;
+                  }
+                  setMemberStatus(
+                    { id: member.id, body: { status: "active" } },
+                    {
+                      onSuccess: () => toast.success(t("orgs.toastUserEnabled", { name: member.name })),
+                      onError: (error) => toast.error(apiErrorDetail(error, t("common.actionFailed"))),
+                    }
+                  );
+                }}
+              >
+                {member.status === "active" ? t("orgs.disableUser") : t("orgs.enableUser")}
+              </Button>
+              <Button variant="outline" onClick={() => setPending({ kind: "reset", member })}>
+                {t("orgs.resetPassword")}
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    [t, tOr, activeAdminCount, memberUpdating, setMemberStatus]
+  );
+
+  const memberFilters = useMemo<TableFilter<AdminMember>[]>(
+    () => [
+      {
+        id: "role",
+        label: t("orgs.allRoles"),
+        options: ["admin", "operator", "viewer"].map((role) => ({ value: role, label: t(`orgs.${role}`) })),
+        matches: (member, value) => member.role === value,
+      },
+      {
+        id: "status",
+        label: t("orgs.allStatuses"),
+        options: ["active", "disabled"].map((status) => ({ value: status, label: t(`orgs.${status}`) })),
+        matches: (member, value) => (member.status === "active" ? "active" : "disabled") === value,
+      },
+    ],
+    [t]
+  );
+
+  const agentColumns = useMemo<Column<AdminAgent>[]>(
+    () => [
+      {
+        id: "name",
+        header: t("orgs.userName"),
+        sortValue: (agent) => agent.name,
+        cell: (agent) => <span className="font-medium">{agent.name}</span>,
+      },
+      {
+        id: "model",
+        header: t("orgs.model"),
+        sortValue: (agent) => agent.model,
+        cell: (agent) => <span className="font-mono text-[12px] text-muted-foreground">{agent.model}</span>,
+      },
+      {
+        id: "status",
+        header: t("orgs.status"),
+        align: "right",
+        sortValue: (agent) => agent.status,
+        cell: (agent) => (
+          <StatusLabel tone={agent.status === "active" ? "active" : "paused"}>{agent.status}</StatusLabel>
+        ),
+      },
+    ],
+    [t]
+  );
+
+  const planName = (plan: string) => tOr(`orgs.${plan}`, plan);
+
+  function confirmation(change: PendingChange, name: string, status: string, plan: string) {
+    switch (change.kind) {
+      case "status": {
+        const suspending = status !== "suspended";
+        return {
+          title: t(suspending ? "orgs.suspendTitle" : "orgs.activateTitle", { name }),
+          description: t(suspending ? "orgs.suspendBody" : "orgs.activateBody"),
+          confirmLabel: t(suspending ? "orgs.suspend" : "orgs.activate"),
+          danger: suspending,
+          confirmText: suspending ? name : undefined,
+          run: async () => {
+            await update.mutateAsync({ status: suspending ? "suspended" : "active" });
+            toast.success(t(suspending ? "orgs.toastSuspended" : "orgs.toastActivated", { name }));
+          },
+        };
+      }
+      case "plan":
+        return {
+          title: t("orgs.planTitle", { name }),
+          description: t("orgs.planBody", { from: planName(plan), to: planName(change.plan) }),
+          confirmLabel: t("orgs.planConfirm"),
+          run: async () => {
+            await update.mutateAsync({ plan: change.plan });
+            toast.success(t("orgs.toastPlan", { name, plan: planName(change.plan) }));
+          },
+        };
+      case "disable":
+        return {
+          title: t("orgs.disableTitle", { name: change.member.name }),
+          description: t("orgs.disableBody", { email: change.member.email }),
+          confirmLabel: t("orgs.disableUser"),
+          danger: true,
+          run: async () => {
+            await updateMember.mutateAsync({ id: change.member.id, body: { status: "disabled" } });
+            toast.success(t("orgs.toastUserDisabled", { name: change.member.name }));
+          },
+        };
+      case "reset":
+        return {
+          title: t("orgs.resetTitle", { name: change.member.name }),
+          description: t("orgs.resetBody", { email: change.member.email }),
+          confirmLabel: t("orgs.resetConfirm"),
+          danger: true,
+          run: async () => {
+            await resetPassword.mutateAsync(change.member.id);
+            toast.success(t("orgs.toastReset", { email: change.member.email }));
+          },
+        };
+    }
+  }
+
+  const confirm = pending && data ? confirmation(pending, data.name, data.status, data.plan) : null;
 
   return (
     <QueryGate isPending={org.isPending && !data} isError={org.isError && !data}>
@@ -101,7 +280,9 @@ export default function OrgDetailPage() {
             <SelectField
               label={t("orgs.changePlan")}
               value={data.plan}
-              onChange={(plan) => update.mutate({ plan })}
+              onChange={(plan) => {
+                if (plan !== data.plan) setPending({ kind: "plan", plan });
+              }}
             >
               {data.kind === "organization" ? (
                 <option value="enterprise">{t("orgs.enterprise")}</option>
@@ -115,11 +296,7 @@ export default function OrgDetailPage() {
             <Button
               variant="outline"
               disabled={update.isPending}
-              onClick={() =>
-                update.mutate({
-                  status: data.status === "suspended" ? "active" : "suspended",
-                })
-              }
+              onClick={() => setPending({ kind: "status" })}
             >
               {data.status === "suspended" ? t("orgs.activate") : t("orgs.suspend")}
             </Button>
@@ -137,13 +314,14 @@ export default function OrgDetailPage() {
             className="mt-10 max-w-[640px] border-t border-border pt-8"
             onSubmit={async (event) => {
               event.preventDefault();
-              await createMember.mutateAsync({
+              const added = await createMember.mutateAsync({
                 email: userForm.email.trim(),
                 name: userForm.name.trim(),
                 password: userForm.password,
                 title: userForm.title.trim() || "Operator",
                 role: userForm.role,
               });
+              toast.success(t("orgs.toastUserAdded", { name: added.name }));
               setUserForm({
                 email: "",
                 name: "",
@@ -197,128 +375,41 @@ export default function OrgDetailPage() {
 
           <section className="mt-10">
             <SectionLabel className="mb-3">{t("orgs.members")}</SectionLabel>
-            {data.members.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">{t("orgs.noMembers")}</p>
-            ) : (
-              <ul className="divide-y divide-border border-y border-border">
-                {data.members.map((member) => {
-                  const lastAdmin =
-                    member.status === "active" && isOrgAdmin(member) && activeAdminCount <= 1;
-                  const resetting = resetMemberId === member.id;
-                  return (
-                    <li key={member.id} className="py-4">
-                      <div className="grid grid-cols-[180px_1fr_120px_100px_auto] items-center gap-4">
-                        <span className="text-[13px] font-medium">{member.name}</span>
-                        <span className="truncate text-[13px] text-muted-foreground">{member.email}</span>
-                        <span className="text-[12px] text-muted-foreground">{t(`orgs.${member.role}`)}</span>
-                        <StatusLabel tone={member.status === "active" ? "active" : "paused"}>
-                          {t(`orgs.${member.status === "active" ? "active" : "disabled"}`)}
-                        </StatusLabel>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            disabled={updateMember.isPending || lastAdmin}
-                            title={lastAdmin ? t("orgs.lastAdmin") : undefined}
-                            onClick={() =>
-                              updateMember.mutate({
-                                id: member.id,
-                                body: {
-                                  status: member.status === "active" ? "disabled" : "active",
-                                },
-                              })
-                            }
-                          >
-                            {member.status === "active" ? t("orgs.disableUser") : t("orgs.enableUser")}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            disabled={resetPassword.isPending}
-                            onClick={() => {
-                              resetPassword.reset();
-                              setResetDoneId(null);
-                              setNewPassword("");
-                              setResetMemberId(resetting ? null : member.id);
-                            }}
-                          >
-                            {resetting ? t("orgs.cancel") : t("orgs.resetPassword")}
-                          </Button>
-                        </div>
-                      </div>
-                      {resetting ? (
-                        <form
-                          className="mt-3 flex max-w-[420px] items-end gap-3"
-                          onSubmit={async (event) => {
-                            event.preventDefault();
-                            if (newPassword.length < 8) return;
-                            try {
-                              await resetPassword.mutateAsync({ id: member.id, password: newPassword });
-                              setResetMemberId(null);
-                              setNewPassword("");
-                              setResetDoneId(member.id);
-                            } catch {
-                              // Error is shown via resetPassword.isError
-                            }
-                          }}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <Field
-                              label={t("orgs.newPassword")}
-                              type="password"
-                              autoComplete="new-password"
-                              minLength={8}
-                              value={newPassword}
-                              onChange={setNewPassword}
-                            />
-                          </div>
-                          <Button type="submit" disabled={resetPassword.isPending}>
-                            {resetPassword.isPending ? t("orgs.resettingPassword") : t("orgs.save")}
-                          </Button>
-                        </form>
-                      ) : null}
-                      {resetDoneId === member.id ? (
-                        <p className="mt-3 text-[12px] text-muted-foreground">{t("orgs.passwordReset")}</p>
-                      ) : null}
-                      {resetting && resetPassword.isError ? (
-                        <p className="mt-3 text-[12px] text-destructive">
-                          {apiErrorDetail(resetPassword.error, t("orgs.passwordTooShort"))}
-                        </p>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            <DataTable
+              rows={data.members}
+              columns={memberColumns}
+              rowKey={(member) => member.id}
+              searchText={(member) => `${member.name} ${member.email}`}
+              searchPlaceholder={t("orgs.searchMembers")}
+              filters={memberFilters}
+              empty={t("orgs.noMembers")}
+            />
             {activeAdminCount <= 1 && data.members.some((member) => member.status === "active") ? (
               <p className="mt-3 text-[12px] text-muted-foreground">{t("orgs.lastAdmin")}</p>
-            ) : null}
-            {updateMember.isError ? (
-              <p className="mt-3 text-[12px] text-destructive">
-                {apiErrorDetail(updateMember.error, t("orgs.lastAdmin"))}
-              </p>
             ) : null}
           </section>
 
           <section className="mt-10">
             <SectionLabel className="mb-3">{t("orgs.agentList")}</SectionLabel>
             <p className="mb-4 max-w-xl text-[13px] text-muted-foreground">{t("orgs.readOnlyAgents")}</p>
-            {data.agents.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">{t("orgs.noAgents")}</p>
-            ) : (
-              <ul className="divide-y divide-border border-y border-border">
-                {data.agents.map((agent) => (
-                  <li key={agent.id} className="flex items-center justify-between py-4">
-                    <div>
-                      <div className="text-[13px] font-medium">{agent.name}</div>
-                      <div className="mt-1 font-mono text-[12px] text-muted-foreground">{agent.model}</div>
-                    </div>
-                    <StatusLabel tone={agent.status === "active" ? "active" : "paused"}>
-                      {agent.status}
-                    </StatusLabel>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <DataTable
+              rows={data.agents}
+              columns={agentColumns}
+              rowKey={(agent) => agent.id}
+              empty={t("orgs.noAgents")}
+            />
           </section>
+
+          <ConfirmDialog
+            open={Boolean(confirm)}
+            onClose={() => setPending(null)}
+            onConfirm={confirm?.run ?? (async () => undefined)}
+            title={confirm?.title ?? ""}
+            description={confirm?.description}
+            confirmLabel={confirm?.confirmLabel ?? ""}
+            danger={confirm?.danger}
+            confirmText={confirm?.confirmText}
+          />
         </div>
       )}
     </QueryGate>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createOrgMember,
   fetchAudit,
+  fetchAuditEvents,
   fetchConnections,
   fetchMcp,
   fetchOrg,
@@ -12,6 +13,7 @@ import {
   fetchRuntimes,
   fetchSettings,
   fetchUsage,
+  fetchUsers,
   onboardOrg,
   resetOrgMemberPassword,
   updateOrg,
@@ -22,6 +24,7 @@ import { useAuthStore } from "@/stores/auth-store";
 export const overviewQueryKey = ["admin-overview"] as const;
 export const orgsQueryKey = ["admin-orgs"] as const;
 export const orgQueryKey = (id: string) => ["admin-org", id] as const;
+export const usersQueryKey = ["admin-users"] as const;
 
 export function useOverview() {
   const token = useAuthStore((state) => state.token);
@@ -57,14 +60,53 @@ export function useMcp() {
   return useQuery({ queryKey: ["admin-mcp"], queryFn: fetchMcp, enabled: Boolean(token) });
 }
 
-export function useUsage() {
+export function useUsers() {
   const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: ["admin-usage"], queryFn: fetchUsage, enabled: Boolean(token) });
+  return useQuery({ queryKey: usersQueryKey, queryFn: fetchUsers, enabled: Boolean(token) });
 }
 
-export function useAudit() {
+/** `days` limits usage to the last N days; omit it for all time. */
+export function useUsage(days?: number) {
   const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: ["admin-audit"], queryFn: fetchAudit, enabled: Boolean(token) });
+  return useQuery({
+    queryKey: ["admin-usage", days ?? "all"],
+    queryFn: () => fetchUsage(days),
+    enabled: Boolean(token),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export interface AuditFilters {
+  page: number;
+  pageSize: number;
+  organizationId: string;
+  event: string;
+  /** Only events from the last N days; 0 means all time. */
+  days: number;
+}
+
+export function useAudit(filters: AuditFilters) {
+  const token = useAuthStore((state) => state.token);
+  return useQuery({
+    queryKey: ["admin-audit", filters],
+    queryFn: () =>
+      fetchAudit({
+        limit: filters.pageSize,
+        offset: filters.page * filters.pageSize,
+        organizationId: filters.organizationId || undefined,
+        event: filters.event || undefined,
+        since: filters.days
+          ? new Date(Date.now() - filters.days * 86_400_000).toISOString()
+          : undefined,
+      }),
+    enabled: Boolean(token),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAuditEvents() {
+  const token = useAuthStore((state) => state.token);
+  return useQuery({ queryKey: ["admin-audit-events"], queryFn: fetchAuditEvents, enabled: Boolean(token) });
 }
 
 export function useSettings() {
@@ -101,6 +143,7 @@ export function useCreateMember(orgId: string) {
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: orgQueryKey(orgId) });
       await client.invalidateQueries({ queryKey: orgsQueryKey });
+      await client.invalidateQueries({ queryKey: usersQueryKey });
     },
   });
 }
@@ -112,13 +155,13 @@ export function useUpdateMember(orgId: string) {
       updateOrgMember(orgId, id, body),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: orgQueryKey(orgId) });
+      await client.invalidateQueries({ queryKey: usersQueryKey });
     },
   });
 }
 
 export function useResetMemberPassword(orgId: string) {
   return useMutation({
-    mutationFn: ({ id, password }: { id: string; password: string }) =>
-      resetOrgMemberPassword(orgId, id, password),
+    mutationFn: (id: string) => resetOrgMemberPassword(orgId, id),
   });
 }
