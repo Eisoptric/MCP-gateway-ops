@@ -1,4 +1,10 @@
 import { loginVerifiers } from "@/lib/login-verifier";
+import {
+  createPasskey,
+  getPasskey,
+  type PasskeyCreationOptions,
+  type PasskeyRequestOptions,
+} from "@/lib/webauthn";
 
 const API_BASE = "/saturn-api";
 
@@ -51,7 +57,19 @@ interface LoginResponse {
 /** Where a sign-in stands: finished, or waiting for the second factor. */
 export type LoginStep =
   | { step: "done"; user: AuthUserResponse }
-  | { step: "code"; challenge: string; method: "totp" | "email" };
+  | {
+      step: "code";
+      challenge: string;
+      /** The code this account can type, if any. */
+      method: "totp" | "email" | null;
+      /** The account has a passkey it can use instead. */
+      passkey: boolean;
+    };
+
+export interface Passkey {
+  id: string;
+  created_at: string;
+}
 
 export interface TotpSetup {
   secret: string;
@@ -274,9 +292,10 @@ function patch<T>(path: string, body: unknown) {
 
 async function loginStep(result: LoginResponse): Promise<LoginStep> {
   if (result.mfa_required && result.challenge) {
-    const method = (["totp", "email"] as const).find((item) => result.methods.includes(item));
-    if (!method) throw new ApiError(400, "mfa_unsupported");
-    return { step: "code", challenge: result.challenge, method };
+    const method = (["totp", "email"] as const).find((item) => result.methods.includes(item)) ?? null;
+    const passkey = result.methods.includes("passkey");
+    if (!method && !passkey) throw new ApiError(400, "mfa_unsupported");
+    return { step: "code", challenge: result.challenge, method, passkey };
   }
   if (!result.user) throw new ApiError(401, "Invalid email or password");
   if (!result.user.is_platform_admin) {
@@ -327,6 +346,37 @@ export async function login(email: string, password: string, locale: string): Pr
 export async function verifyLogin(method: "totp" | "email", challenge: string, code: string) {
   return loginStep(await post<LoginResponse>(`/auth/login/${method}`, { challenge, code: code.trim() }));
 }
+
+/** Finishes a sign-in with a passkey on this device. Throws a DOMException if the prompt is dismissed. */
+export async function verifyLoginWithPasskey(challenge: string) {
+  const options = await post<PasskeyRequestOptions>("/auth/login/passkey/options", { challenge });
+  const credential = await getPasskey(options);
+  return loginStep(await post<LoginResponse>("/auth/login/passkey", { challenge, credential }));
+}
+
+/** The API wants a sign-in from the last few minutes before it changes how the account signs in. */
+export function isReauthRequired(error: unknown) {
+  if (!(error instanceof ApiError) || error.status !== 403) return false;
+  return apiErrorDetail(error, "") === "Reauthentication required";
+}
+
+/** Proves the password again, which makes this session count as freshly signed in. */
+export async function reauthenticate(email: string, password: string) {
+  const { v2 } = await loginVerifiers(email.trim().toLowerCase(), password);
+  return post<void>("/auth/reauth", { password: v2 });
+}
+
+export const fetchPasskeys = async () =>
+  (await get<{ passkeys: Passkey[] }>("/auth/mfa")).passkeys;
+
+/** Makes a passkey on this device and saves it to the account. It works only on this address. */
+export async function addPasskey() {
+  const options = await post<PasskeyCreationOptions>("/auth/passkeys/options");
+  const credential = await createPasskey(options);
+  return post<Passkey>("/auth/passkeys", { credential });
+}
+
+export const deletePasskey = (id: string) => request<void>(`/auth/passkeys/${id}`, { method: "DELETE" });
 
 export const logout = () => post<void>("/auth/logout");
 export const fetchMe = () => get<AuthUserResponse>("/auth/me");

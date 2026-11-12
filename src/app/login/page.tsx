@@ -11,14 +11,17 @@ import {
   ApiError,
   beginTotpSetup,
   confirmTotpSetup,
+  isReauthRequired,
   login,
   logout,
   verifyLogin,
+  verifyLoginWithPasskey,
   type AuthUserResponse,
   type LoginStep,
   type TotpSetup,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { passkeyDismissed, passkeysSupported } from "@/lib/webauthn";
 
 const inputClass =
   "mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-ring";
@@ -26,7 +29,8 @@ const labelClass = "block text-[11px] uppercase tracking-[0.08em] text-muted-for
 
 interface Challenge {
   challenge: string;
-  method: "totp" | "email";
+  method: "totp" | "email" | null;
+  passkey: boolean;
   email: string;
 }
 
@@ -45,10 +49,6 @@ function detailOf(error: unknown): unknown {
   } catch {
     return error.message;
   }
-}
-
-function needsFreshSignIn(error: unknown) {
-  return error instanceof ApiError && error.status === 403 && detailOf(error) === "Reauthentication required";
 }
 
 export default function LoginPage() {
@@ -76,7 +76,7 @@ function LoginFlow() {
 
   function advance(step: LoginStep, email: string) {
     if (step.step === "code") {
-      setChallenge({ challenge: step.challenge, method: step.method, email });
+      setChallenge({ challenge: step.challenge, method: step.method, passkey: step.passkey, email });
       return;
     }
     setChallenge(null);
@@ -254,20 +254,23 @@ function CodeStep({
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const canUsePasskey = challenge.passkey && passkeysSupported();
+  const method = challenge.method;
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function finish(verify: () => Promise<LoginStep>, refused: string) {
     setError("");
     setPending(true);
     try {
-      onStep(await verifyLogin(challenge.method, challenge.challenge, code), challenge.email);
+      onStep(await verify(), challenge.email);
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 403 && caught.message === "not_admin") {
+      if (passkeyDismissed(caught)) {
+        setError(t("passkeys.dismissed"));
+      } else if (caught instanceof ApiError && caught.status === 403 && caught.message === "not_admin") {
         setError(t("login.notAdmin"));
       } else if (caught instanceof ApiError && caught.status === 429) {
         setError(t("login.tooMany"));
       } else if (caught instanceof ApiError && caught.status < 500) {
-        setError(t("login.codeInvalid"));
+        setError(refused);
       } else {
         setError(t("common.apiError"));
       }
@@ -276,13 +279,46 @@ function CodeStep({
     }
   }
 
+  const passkeyButton = (
+    <Button
+      variant={method ? "outline" : "default"}
+      className="w-full"
+      disabled={pending}
+      onClick={() => finish(() => verifyLoginWithPasskey(challenge.challenge), t("login.passkeyRefused"))}
+    >
+      {t("login.usePasskey")}
+    </Button>
+  );
+  const back = (
+    <Button variant="ghost" className="mt-2 w-full text-muted-foreground" disabled={pending} onClick={onBack}>
+      {t("login.back")}
+    </Button>
+  );
+
+  if (!method) {
+    return (
+      <div>
+        <Heading
+          title={t("login.codeTitle")}
+          lead={canUsePasskey ? t("login.passkeyLead") : t("login.mfaUnsupported")}
+        />
+        <ErrorText>{error}</ErrorText>
+        {canUsePasskey ? <div className="mt-6">{passkeyButton}</div> : null}
+        {back}
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={onSubmit}>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void finish(() => verifyLogin(method, challenge.challenge, code), t("login.codeInvalid"));
+      }}
+    >
       <Heading
         title={t("login.codeTitle")}
-        lead={
-          challenge.method === "totp" ? t("login.totpLead") : t("login.emailLead", { email: challenge.email })
-        }
+        lead={method === "totp" ? t("login.totpLead") : t("login.emailLead", { email: challenge.email })}
       />
       <label className={`mt-8 ${labelClass}`}>
         {t("login.code")}
@@ -299,9 +335,17 @@ function CodeStep({
       <Button type="submit" className="mt-6 w-full" disabled={pending}>
         {pending ? t("login.verifying") : t("login.verify")}
       </Button>
-      <Button variant="ghost" className="mt-2 w-full text-muted-foreground" disabled={pending} onClick={onBack}>
-        {t("login.back")}
-      </Button>
+      {canUsePasskey ? (
+        <>
+          <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            {t("login.or")}
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          {passkeyButton}
+        </>
+      ) : null}
+      {back}
     </form>
   );
 }
@@ -317,7 +361,7 @@ function SetupStep({ onDone, onSignOut }: { onDone: () => void; onSignOut: () =>
   const [stale, setStale] = useState(false);
 
   function fail(caught: unknown) {
-    if (needsFreshSignIn(caught)) {
+    if (isReauthRequired(caught)) {
       setStale(true);
     } else if (caught instanceof ApiError && caught.status === 429) {
       // After too many wrong codes the API discards the key, so setup starts over.

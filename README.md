@@ -36,6 +36,7 @@ Override the API origin with `API_URL` (see `.env.example`). Restart `next dev` 
 
 - The session is the API's `HttpOnly` cookie, passed through the `/saturn-api` rewrite. The console stores no token.
 - The password is hashed in the browser (Argon2id, then HKDF) and only the result is sent, the same as the API's own sign-in page. This needs `crypto.subtle`, so serve the console over HTTPS or from `localhost`.
+- Passkeys: add one under Settings, then use it at sign-in instead of typing a code. A passkey belongs to the address it was added from, so one made in the customer console does not work here, and the API takes one only from an origin in its `CORS_ORIGINS`. An authenticator app is still required on the account.
 - The API accepts a cookie-authenticated change only from an origin it trusts. Put the console's origin in the API's `CORS_ORIGINS`; `http://localhost:3001` is there by default.
 
 ## What it does
