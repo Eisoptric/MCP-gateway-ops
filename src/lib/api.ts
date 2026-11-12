@@ -366,8 +366,8 @@ export async function reauthenticate(email: string, password: string) {
   return post<void>("/auth/reauth", { password: v2 });
 }
 
-export const fetchPasskeys = async () =>
-  (await get<{ passkeys: Passkey[] }>("/auth/mfa")).passkeys;
+/** The signed-in account's second steps. `totp` is true once an authenticator app is confirmed. */
+export const fetchMfa = () => get<{ totp?: boolean; passkeys: Passkey[] }>("/auth/mfa");
 
 /** Makes a passkey on this device and saves it to the account. It works only on this address. */
 export async function addPasskey() {

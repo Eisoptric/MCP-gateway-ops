@@ -40,7 +40,7 @@ export function Dialog({
       onClick={(event) => {
         if (event.target === ref.current) onClose();
       }}
-      className="m-auto w-[440px] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-card p-0 text-foreground shadow-xl backdrop:bg-black/40"
+      className="m-auto max-h-[calc(100vh-2rem)] w-[440px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border bg-card p-0 text-foreground shadow-xl backdrop:bg-black/40"
     >
       {open ? (
         <div className="p-6">

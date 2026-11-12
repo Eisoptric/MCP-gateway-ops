@@ -1,6 +1,6 @@
 "use client";
 
-import { PasskeySection } from "@/components/account/passkeys";
+import { SignInMethods } from "@/components/account/sign-in-methods";
 import { QueryGate } from "@/components/layout/query-gate";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useSettings } from "@/hooks/use-admin";
@@ -75,7 +75,7 @@ export default function SettingsPage() {
           </ul>
         </section>
 
-        <PasskeySection />
+        <SignInMethods />
       </div>
     </QueryGate>
   );
