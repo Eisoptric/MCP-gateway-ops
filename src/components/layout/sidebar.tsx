@@ -10,7 +10,6 @@ const items = [
   { href: "/orgs", key: "nav.orgs" },
   { href: "/users", key: "nav.users" },
   { href: "/connections", key: "nav.connections" },
-  { href: "/runtimes", key: "nav.runtimes" },
   { href: "/mcp", key: "nav.mcp" },
   { href: "/usage", key: "nav.usage" },
   { href: "/audit", key: "nav.audit" },

@@ -164,20 +164,6 @@ export interface AdminOrgConnections {
   channels: AdminConnectionChannel[];
 }
 
-export interface AdminRuntime {
-  id: string;
-  organization_id: string;
-  organization_name: string;
-  status: string;
-  region: string;
-  version: string;
-  deployment_mode: string;
-  active_runs: number;
-  agent_count: number;
-  last_heartbeat_at: string | null;
-  last_error: string | null;
-}
-
 export interface AdminMcp {
   servers: number;
   tools: number;
@@ -345,7 +331,6 @@ export const fetchOrgs = () => getAll<AdminOrg>("/admin/orgs");
 export const fetchOrg = (id: string) => get<AdminOrgDetail>(`/admin/orgs/${id}`);
 export const fetchUsers = () => getAll<AdminUser>("/admin/users");
 export const fetchConnections = () => get<AdminOrgConnections[]>("/admin/connections");
-export const fetchRuntimes = () => get<AdminRuntime[]>("/admin/runtimes");
 export const fetchMcp = () => get<AdminMcp>("/admin/mcp");
 export const fetchUsage = (days?: number) =>
   get<AdminUsageRow[]>(days ? `/admin/usage?days=${days}` : "/admin/usage");

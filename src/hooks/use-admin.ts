@@ -10,7 +10,6 @@ import {
   fetchOrg,
   fetchOrgs,
   fetchOverview,
-  fetchRuntimes,
   fetchSettings,
   fetchUsage,
   fetchUsers,
@@ -48,11 +47,6 @@ export function useOrg(id: string) {
 export function useConnections() {
   const token = useAuthStore((state) => state.token);
   return useQuery({ queryKey: ["admin-connections"], queryFn: fetchConnections, enabled: Boolean(token) });
-}
-
-export function useRuntimes() {
-  const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: ["admin-runtimes"], queryFn: fetchRuntimes, enabled: Boolean(token) });
 }
 
 export function useMcp() {

@@ -37,7 +37,6 @@ Saturn **Operator Console** — platform operations, not the customer control pa
 - Overview: orgs / users / agents / connections and system health
 - Organizations: onboard, plan, suspend, tenant users
 - Connections: runtime / MCP gateway / connector heartbeats
-- Runtimes: infrastructure health per tenant
 - MCP: tool ecosystem observability
 - Usage: runs, tool calls, x402
 - Audit: operator and system actions
