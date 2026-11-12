@@ -12,7 +12,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { StatusLabel } from "@/components/ui/status-dot";
 import type { StatusTone } from "@/components/ui/status-dot";
 import { useCreateMember, useOrg, useResetMemberPassword, useUpdateMember, useUpdateOrg } from "@/hooks/use-admin";
-import { apiErrorDetail, type AdminAgent, type AdminMember } from "@/lib/api";
+import { apiErrorDetail, LOCAL_PASSWORDS, PLANS, type AdminAgent, type AdminMember } from "@/lib/api";
 import { formatDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "@/stores/toast-store";
@@ -284,14 +284,11 @@ export default function OrgDetailPage() {
                 if (plan !== data.plan) setPending({ kind: "plan", plan });
               }}
             >
-              {data.kind === "organization" ? (
-                <option value="enterprise">{t("orgs.enterprise")}</option>
-              ) : (
-                <>
-                  <option value="free">{t("orgs.free")}</option>
-                  <option value="pro">{t("orgs.pro")}</option>
-                </>
-              )}
+              {[...new Set([...(PLANS[data.kind ?? "personal"] ?? []), data.plan])].map((plan) => (
+                <option key={plan} value={plan}>
+                  {planName(plan)}
+                </option>
+              ))}
             </SelectField>
             <Button
               variant="outline"
@@ -314,21 +311,26 @@ export default function OrgDetailPage() {
             className="mt-10 max-w-[640px] border-t border-border pt-8"
             onSubmit={async (event) => {
               event.preventDefault();
-              const added = await createMember.mutateAsync({
-                email: userForm.email.trim(),
-                name: userForm.name.trim(),
-                password: userForm.password,
-                title: userForm.title.trim() || "Operator",
-                role: userForm.role,
-              });
-              toast.success(t("orgs.toastUserAdded", { name: added.name }));
-              setUserForm({
-                email: "",
-                name: "",
-                password: "",
-                title: "Operator",
-                role: "operator",
-              });
+              // A refusal is shown under the form through createMember.error.
+              try {
+                const added = await createMember.mutateAsync({
+                  email: userForm.email.trim(),
+                  name: userForm.name.trim(),
+                  password: (LOCAL_PASSWORDS && userForm.password) || undefined,
+                  title: userForm.title.trim() || "Operator",
+                  role: userForm.role,
+                });
+                toast.success(t("orgs.toastUserAdded", { name: added.name }));
+                setUserForm({
+                  email: "",
+                  name: "",
+                  password: "",
+                  title: "Operator",
+                  role: "operator",
+                });
+              } catch {
+                return;
+              }
             }}
           >
             <SectionLabel>{t("orgs.addUser")}</SectionLabel>
@@ -344,14 +346,17 @@ export default function OrgDetailPage() {
                 value={userForm.email}
                 onChange={(value) => setUserForm((current) => ({ ...current, email: value }))}
               />
-              <Field
-                label={t("orgs.password")}
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                value={userForm.password}
-                onChange={(value) => setUserForm((current) => ({ ...current, password: value }))}
-              />
+              {LOCAL_PASSWORDS ? (
+                <Field
+                  label={t("orgs.password")}
+                  type="password"
+                  autoComplete="new-password"
+                  required={false}
+                  minLength={8}
+                  value={userForm.password}
+                  onChange={(value) => setUserForm((current) => ({ ...current, password: value }))}
+                />
+              ) : null}
               <SelectField
                 label={t("orgs.role")}
                 value={userForm.role}

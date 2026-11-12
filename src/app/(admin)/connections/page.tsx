@@ -8,7 +8,6 @@ import { StatusLabel } from "@/components/ui/status-dot";
 import type { StatusTone } from "@/components/ui/status-dot";
 import { useConnections } from "@/hooks/use-admin";
 import type { AdminConnectionChannel } from "@/lib/api";
-import { formatHeartbeat } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 
 interface ChannelRow extends AdminConnectionChannel {
@@ -29,7 +28,7 @@ function uniqueOptions(values: string[]) {
 }
 
 export default function ConnectionsPage() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const connections = useConnections();
 
   const rows = useMemo<ChannelRow[]>(
@@ -74,35 +73,12 @@ export default function ConnectionsPage() {
           </StatusLabel>
         ),
       },
-      {
-        id: "version",
-        header: t("connections.version"),
-        sortValue: (row) => row.version,
-        cell: (row) => <span className="font-mono text-[12px] text-muted-foreground">{row.version || "—"}</span>,
-      },
-      {
-        id: "heartbeat",
-        header: t("connections.heartbeat"),
-        align: "right",
-        sortValue: (row) => row.last_heartbeat_at,
-        cell: (row) => (
-          <span className="whitespace-nowrap text-[12px] text-muted-foreground">
-            {formatHeartbeat(row.last_heartbeat_at, locale)}
-          </span>
-        ),
-      },
     ],
-    [t, locale]
+    [t]
   );
 
   const filters = useMemo<TableFilter<ChannelRow>[]>(
     () => [
-      {
-        id: "channel",
-        label: t("connections.allChannels"),
-        options: uniqueOptions(rows.map((row) => row.name)),
-        matches: (row, value) => row.name === value,
-      },
       {
         id: "status",
         label: t("connections.allStatuses"),

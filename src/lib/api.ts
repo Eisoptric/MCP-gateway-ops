@@ -93,7 +93,6 @@ export interface AdminOrg {
   connection_count: number;
   runtime_status: string;
   mcp_status: string;
-  last_heartbeat_at: string | null;
 }
 
 export interface AdminMember {
@@ -153,8 +152,6 @@ export interface AdminConnectionChannel {
   id: string;
   name: string;
   status: string;
-  last_heartbeat_at: string | null;
-  version: string | null;
   detail: string | null;
 }
 
@@ -356,17 +353,30 @@ export async function fetchAudit(query: AuditQuery) {
 }
 export const fetchSettings = () => get<AdminSettings>("/admin/settings");
 
+/**
+ * The API uses an operator-chosen password only in local development. In production it ignores
+ * one: the new user is emailed a one-time code and chooses their own. So the forms offer the
+ * field only in a development build.
+ */
+export const LOCAL_PASSWORDS = process.env.NODE_ENV !== "production";
+
 export function onboardOrg(body: {
   name: string;
   admin_email: string;
   admin_name: string;
-  admin_password: string;
+  admin_password?: string;
   admin_title?: string;
   plan?: string;
   kind?: string;
 }) {
   return post<AdminOrgDetail>("/admin/orgs", body);
 }
+
+/** The plans each kind of account can be on. */
+export const PLANS: Record<string, string[]> = {
+  personal: ["free", "pro"],
+  organization: ["team", "enterprise"],
+};
 
 export function updateOrg(
   id: string,
@@ -380,7 +390,7 @@ export function createOrgMember(
   body: {
     email: string;
     name: string;
-    password: string;
+    password?: string;
     title?: string;
     role?: string;
     status?: string;

@@ -10,7 +10,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { StatusLabel } from "@/components/ui/status-dot";
 import type { StatusTone } from "@/components/ui/status-dot";
 import { useOnboardOrg, useOrgs } from "@/hooks/use-admin";
-import { apiErrorDetail, type AdminOrg } from "@/lib/api";
+import { apiErrorDetail, LOCAL_PASSWORDS, PLANS, type AdminOrg } from "@/lib/api";
 import { formatDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "@/stores/toast-store";
@@ -137,25 +137,30 @@ export default function OrgsPage() {
           className="mt-10 max-w-[640px] border-t border-border pt-8"
           onSubmit={async (event) => {
             event.preventDefault();
-            const created = await onboard.mutateAsync({
-              name: form.name.trim(),
-              admin_email: form.admin_email.trim(),
-              admin_name: form.admin_name.trim(),
-              admin_password: form.admin_password,
-              admin_title: form.admin_title.trim() || "Admin",
-              plan: form.kind === "organization" ? "enterprise" : form.plan,
-              kind: form.kind,
-            });
-            toast.success(t("orgs.toastCreated", { name: created.name }));
-            setForm({
-              name: "",
-              admin_email: "",
-              admin_name: "",
-              admin_password: "",
-              admin_title: "Admin",
-              plan: "enterprise",
-              kind: "organization",
-            });
+            // A refusal is shown under the form through onboard.error.
+            try {
+              const created = await onboard.mutateAsync({
+                name: form.name.trim(),
+                admin_email: form.admin_email.trim(),
+                admin_name: form.admin_name.trim(),
+                admin_password: (LOCAL_PASSWORDS && form.admin_password) || undefined,
+                admin_title: form.admin_title.trim() || "Admin",
+                plan: form.plan,
+                kind: form.kind,
+              });
+              toast.success(t("orgs.toastCreated", { name: created.name }));
+              setForm({
+                name: "",
+                admin_email: "",
+                admin_name: "",
+                admin_password: "",
+                admin_title: "Admin",
+                plan: "enterprise",
+                kind: "organization",
+              });
+            } catch {
+              return;
+            }
           }}
         >
           <SectionLabel>{t("orgs.onboard")}</SectionLabel>
@@ -172,7 +177,7 @@ export default function OrgsPage() {
                 setForm((current) => ({
                   ...current,
                   kind: value,
-                  plan: value === "organization" ? "enterprise" : current.plan === "enterprise" ? "free" : current.plan,
+                  plan: (PLANS[value] ?? []).includes(current.plan) ? current.plan : value === "organization" ? "enterprise" : "free",
                 }))
               }
             >
@@ -181,17 +186,14 @@ export default function OrgsPage() {
             </SelectField>
             <SelectField
               label={t("orgs.plan")}
-              value={form.kind === "organization" ? "enterprise" : form.plan}
+              value={form.plan}
               onChange={(value) => setForm((current) => ({ ...current, plan: value }))}
             >
-              {form.kind === "organization" ? (
-                <option value="enterprise">{t("orgs.enterprise")}</option>
-              ) : (
-                <>
-                  <option value="free">{t("orgs.free")}</option>
-                  <option value="pro">{t("orgs.pro")}</option>
-                </>
-              )}
+              {(PLANS[form.kind] ?? []).map((plan) => (
+                <option key={plan} value={plan}>
+                  {t(`orgs.${plan}`)}
+                </option>
+              ))}
             </SelectField>
             <Field
               label={t("orgs.adminName")}
@@ -204,13 +206,17 @@ export default function OrgsPage() {
               value={form.admin_email}
               onChange={(value) => setForm((current) => ({ ...current, admin_email: value }))}
             />
-            <Field
-              label={t("orgs.adminPassword")}
-              type="password"
-              autoComplete="new-password"
-              value={form.admin_password}
-              onChange={(value) => setForm((current) => ({ ...current, admin_password: value }))}
-            />
+            {LOCAL_PASSWORDS ? (
+              <Field
+                label={t("orgs.adminPassword")}
+                type="password"
+                autoComplete="new-password"
+                required={false}
+                minLength={8}
+                value={form.admin_password}
+                onChange={(value) => setForm((current) => ({ ...current, admin_password: value }))}
+              />
+            ) : null}
           </div>
           {onboard.isError ? (
             <p className="mt-3 text-[12px] text-destructive">

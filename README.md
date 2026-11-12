@@ -36,9 +36,10 @@ Saturn **Operator Console** — platform operations, not the customer control pa
 
 - Overview: orgs / users / agents / connections and system health
 - Organizations: onboard, plan, suspend, tenant users
-- Connections: runtime / MCP gateway / connector heartbeats
+- Users: every user across accounts
+- Connections: Saturn MCP gateway status per account
 - MCP: tool ecosystem observability
-- Usage: runs, tool calls, x402
+- Usage: runs and tool calls, by time range
 - Audit: operator and system actions
 - Settings: platform config metadata (no secret values)
 
