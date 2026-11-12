@@ -28,7 +28,15 @@ Open [http://localhost:3001](http://localhost:3001) and sign in with the bootstr
 - email: `rick@saturn.ai`
 - password: `saturn`
 
+The first sign-in asks you to set up an authenticator app: the API lets a platform admin do nothing else until one is on the account. Later sign-ins ask for its 6-digit code, or a backup code.
+
 Override the API origin with `API_URL` (see `.env.example`). Restart `next dev` after changing it.
+
+## Sign-in and sessions
+
+- The session is the API's `HttpOnly` cookie, passed through the `/saturn-api` rewrite. The console stores no token.
+- The password is hashed in the browser (Argon2id, then HKDF) and only the result is sent, the same as the API's own sign-in page. This needs `crypto.subtle`, so serve the console over HTTPS or from `localhost`.
+- The API accepts a cookie-authenticated change only from an origin it trusts. Put the console's origin in the API's `CORS_ORIGINS`; `http://localhost:3001` is there by default.
 
 ## What it does
 

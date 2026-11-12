@@ -18,7 +18,6 @@ import {
   updateOrg,
   updateOrgMember,
 } from "@/lib/api";
-import { useAuthStore } from "@/stores/auth-store";
 
 export const overviewQueryKey = ["admin-overview"] as const;
 export const orgsQueryKey = ["admin-orgs"] as const;
@@ -26,46 +25,38 @@ export const orgQueryKey = (id: string) => ["admin-org", id] as const;
 export const usersQueryKey = ["admin-users"] as const;
 
 export function useOverview() {
-  const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: overviewQueryKey, queryFn: fetchOverview, enabled: Boolean(token) });
+  return useQuery({ queryKey: overviewQueryKey, queryFn: fetchOverview });
 }
 
 export function useOrgs() {
-  const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: orgsQueryKey, queryFn: fetchOrgs, enabled: Boolean(token) });
+  return useQuery({ queryKey: orgsQueryKey, queryFn: fetchOrgs });
 }
 
 export function useOrg(id: string) {
-  const token = useAuthStore((state) => state.token);
   return useQuery({
     queryKey: orgQueryKey(id),
     queryFn: () => fetchOrg(id),
-    enabled: Boolean(token && id),
+    enabled: Boolean(id),
   });
 }
 
 export function useConnections() {
-  const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: ["admin-connections"], queryFn: fetchConnections, enabled: Boolean(token) });
+  return useQuery({ queryKey: ["admin-connections"], queryFn: fetchConnections });
 }
 
 export function useMcp() {
-  const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: ["admin-mcp"], queryFn: fetchMcp, enabled: Boolean(token) });
+  return useQuery({ queryKey: ["admin-mcp"], queryFn: fetchMcp });
 }
 
 export function useUsers() {
-  const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: usersQueryKey, queryFn: fetchUsers, enabled: Boolean(token) });
+  return useQuery({ queryKey: usersQueryKey, queryFn: fetchUsers });
 }
 
 /** `days` limits usage to the last N days; omit it for all time. */
 export function useUsage(days?: number) {
-  const token = useAuthStore((state) => state.token);
   return useQuery({
     queryKey: ["admin-usage", days ?? "all"],
     queryFn: () => fetchUsage(days),
-    enabled: Boolean(token),
     placeholderData: keepPreviousData,
   });
 }
@@ -80,7 +71,6 @@ export interface AuditFilters {
 }
 
 export function useAudit(filters: AuditFilters) {
-  const token = useAuthStore((state) => state.token);
   return useQuery({
     queryKey: ["admin-audit", filters],
     queryFn: () =>
@@ -93,19 +83,16 @@ export function useAudit(filters: AuditFilters) {
           ? new Date(Date.now() - filters.days * 86_400_000).toISOString()
           : undefined,
       }),
-    enabled: Boolean(token),
     placeholderData: keepPreviousData,
   });
 }
 
 export function useAuditEvents() {
-  const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: ["admin-audit-events"], queryFn: fetchAuditEvents, enabled: Boolean(token) });
+  return useQuery({ queryKey: ["admin-audit-events"], queryFn: fetchAuditEvents });
 }
 
 export function useSettings() {
-  const token = useAuthStore((state) => state.token);
-  return useQuery({ queryKey: ["admin-settings"], queryFn: fetchSettings, enabled: Boolean(token) });
+  return useQuery({ queryKey: ["admin-settings"], queryFn: fetchSettings });
 }
 
 export function useOnboardOrg() {

@@ -1,73 +1,50 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ApiError, fetchMe } from "@/lib/api";
-import { useAuthStore } from "@/stores/auth-store";
+import { Button } from "@/components/ui/button";
+import { isSignedOut, useSession } from "@/hooks/use-session";
 import { useI18n } from "@/lib/i18n";
 
+/** Renders the console only for a signed-in platform operator whose authenticator is set up. */
 export function AuthGate({ children }: { children: ReactNode }) {
-  const token = useAuthStore((state) => state.token);
-  const hydrated = useAuthStore((state) => state.hydrated);
-  const setHydrated = useAuthStore((state) => state.setHydrated);
+  const session = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useI18n();
-  const [verified, setVerified] = useState(false);
-  const [forbidden, setForbidden] = useState(false);
+
+  const signedOut = isSignedOut(session.error);
+  const user = signedOut ? undefined : session.data;
+  // The sign-in page also runs authenticator setup, so an operator without one goes there.
+  const needsSignIn = signedOut || Boolean(user?.is_platform_admin && user.mfa_setup_required);
 
   useEffect(() => {
-    if (useAuthStore.persist.hasHydrated()) {
-      setHydrated(true);
-    }
-    return useAuthStore.persist.onFinishHydration(() => setHydrated(true));
-  }, [setHydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    if (token) return;
-    setVerified(false);
-    const next =
-      pathname && pathname !== "/login" ? `?next=${encodeURIComponent(pathname)}` : "";
+    if (!needsSignIn) return;
+    const next = signedOut && pathname ? `?next=${encodeURIComponent(pathname)}` : "";
     router.replace(`/login${next}`);
-  }, [hydrated, token, pathname, router]);
+  }, [needsSignIn, signedOut, pathname, router]);
 
-  useEffect(() => {
-    if (!hydrated || !token) return;
-    let cancelled = false;
-    setVerified(false);
-    setForbidden(false);
-    fetchMe()
-      .then(() => {
-        if (!cancelled) setVerified(true);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        if (error instanceof ApiError && error.status === 403) {
-          setForbidden(true);
-          return;
-        }
-        if (error instanceof ApiError && error.status === 401) {
-          router.replace("/login");
-          return;
-        }
-        setVerified(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hydrated, token, router]);
+  if (needsSignIn || session.isPending) {
+    return <div className="min-h-screen bg-background" />;
+  }
 
-  if (forbidden) {
+  if (!user) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-[13px] text-muted-foreground">
+        {t("common.apiError")}
+        <Button variant="outline" disabled={session.isFetching} onClick={() => session.refetch()}>
+          {t("common.retry")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!user.is_platform_admin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6 text-[13px] text-muted-foreground">
         {t("common.forbidden")}
       </div>
     );
-  }
-
-  if (!hydrated || !token || !verified) {
-    return <div className="min-h-screen bg-background" />;
   }
 
   return <>{children}</>;

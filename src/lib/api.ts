@@ -1,4 +1,4 @@
-import { useAuthStore } from "@/lib/auth";
+import { loginVerifiers } from "@/lib/login-verifier";
 
 const API_BASE = "/saturn-api";
 
@@ -37,11 +37,26 @@ export interface AuthUserResponse {
   status: string;
   is_platform_admin: boolean;
   role: string | null;
+  /** The account has no authenticator app yet. The API refuses an operator everything until it does. */
+  mfa_setup_required: boolean;
 }
 
-export interface LoginResponse {
-  token: string;
-  user: AuthUserResponse;
+interface LoginResponse {
+  user: AuthUserResponse | null;
+  mfa_required: boolean;
+  challenge: string | null;
+  methods: string[];
+}
+
+/** Where a sign-in stands: finished, or waiting for the second factor. */
+export type LoginStep =
+  | { step: "done"; user: AuthUserResponse }
+  | { step: "code"; challenge: string; method: "totp" | "email" };
+
+export interface TotpSetup {
+  secret: string;
+  otpauth_url: string;
+  backup_codes: string[];
 }
 
 export interface AdminStats {
@@ -198,28 +213,12 @@ export interface AdminSettings {
   admins: AdminUser[];
 }
 
-function toSession(token: string, user: AuthUserResponse) {
-  return {
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      status: user.status,
-      isPlatformAdmin: user.is_platform_admin,
-      role: user.role ?? undefined,
-    },
-  };
-}
-
-async function send(path: string, init?: RequestInit, auth = true): Promise<Response> {
+// The session is an HttpOnly cookie the API sets at sign-in. The browser sends it with every
+// same-origin request, so nothing here stores or attaches a token.
+async function send(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type") && init?.body) {
     headers.set("Content-Type", "application/json");
-  }
-  const token = useAuthStore.getState().token;
-  if (auth && token) {
-    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(`${API_BASE}${path}`, {
@@ -227,13 +226,6 @@ async function send(path: string, init?: RequestInit, auth = true): Promise<Resp
     headers,
     cache: "no-store",
   });
-
-  if (response.status === 401 && auth && path !== "/auth/login") {
-    useAuthStore.getState().clear();
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-      window.location.assign("/login");
-    }
-  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -243,8 +235,8 @@ async function send(path: string, init?: RequestInit, auth = true): Promise<Resp
   return response;
 }
 
-async function request<T>(path: string, init?: RequestInit, auth = true): Promise<T> {
-  const response = await send(path, init, auth);
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await send(path, init);
 
   if (response.status === 204) {
     return undefined as T;
@@ -269,58 +261,78 @@ async function getAll<T>(path: string) {
   }
 }
 
-function post<T>(path: string, body?: unknown, auth = true) {
-  return request<T>(
-    path,
-    {
-      method: "POST",
-      body: body === undefined ? undefined : JSON.stringify(body),
-    },
-    auth
-  );
+function post<T>(path: string, body?: unknown) {
+  return request<T>(path, {
+    method: "POST",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
 function patch<T>(path: string, body: unknown) {
   return request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 }
 
-export async function login(email: string, password: string) {
-  const result = await post<LoginResponse>("/auth/login", { email, password }, false);
+async function loginStep(result: LoginResponse): Promise<LoginStep> {
+  if (result.mfa_required && result.challenge) {
+    const method = (["totp", "email"] as const).find((item) => result.methods.includes(item));
+    if (!method) throw new ApiError(400, "mfa_unsupported");
+    return { step: "code", challenge: result.challenge, method };
+  }
+  if (!result.user) throw new ApiError(401, "Invalid email or password");
   if (!result.user.is_platform_admin) {
-    await request<void>(
-      "/auth/logout",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${result.token}` },
-      },
-      false
-    );
+    await logout();
     throw new ApiError(403, "not_admin");
   }
-  useAuthStore.getState().setSession(toSession(result.token, result.user));
-  return result;
+  return { step: "done", user: result.user };
 }
 
-export async function logout() {
+function migrationHint(error: ApiError) {
   try {
-    await post<void>("/auth/logout");
-  } finally {
-    useAuthStore.getState().clear();
+    const detail = (JSON.parse(error.message) as { detail?: { migration?: unknown } }).detail;
+    return typeof detail === "object" && detail !== null ? detail.migration : undefined;
+  } catch {
+    return undefined;
   }
 }
 
-export async function fetchMe() {
-  const user = await get<AuthUserResponse>("/auth/me");
-  if (!user.is_platform_admin) {
-    useAuthStore.getState().clear();
-    throw new ApiError(403, "not_admin");
+/**
+ * Signs in with the password hashed here (v2), so the API never receives anything cheap to
+ * guess from. An account stored under an older form has to prove that form once, and the API
+ * then moves it to v2:
+ *
+ * - The API asks a PBKDF2 account for v1, then for the password itself.
+ * - It cannot tell that an Argon2 hash covers v1 (the seeded operator's does), so a plain
+ *   refusal is retried once with v1. A wrong password therefore counts as two failed attempts.
+ */
+export async function login(email: string, password: string, locale: string): Promise<LoginStep> {
+  const normalized = email.trim().toLowerCase();
+  const { v1, v2 } = await loginVerifiers(normalized, password);
+  const proof: { legacy_v1?: string; legacy_password?: string } = {};
+  for (;;) {
+    try {
+      return await loginStep(
+        await post<LoginResponse>("/auth/login", { email: normalized, password: v2, locale, ...proof })
+      );
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      const hint = migrationHint(error);
+      if (hint === "password" && !proof.legacy_password) proof.legacy_password = password;
+      else if (hint !== "reset" && !proof.legacy_v1) proof.legacy_v1 = v1;
+      else throw error;
+    }
   }
-  const token = useAuthStore.getState().token;
-  if (token) {
-    useAuthStore.getState().setSession(toSession(token, user));
-  }
-  return user;
 }
+
+/** Finishes a sign-in with the authenticator (or backup) code, or the emailed code. */
+export async function verifyLogin(method: "totp" | "email", challenge: string, code: string) {
+  return loginStep(await post<LoginResponse>(`/auth/login/${method}`, { challenge, code: code.trim() }));
+}
+
+export const logout = () => post<void>("/auth/logout");
+export const fetchMe = () => get<AuthUserResponse>("/auth/me");
+/** Starts authenticator setup. Each call makes a new key and new backup codes. */
+export const beginTotpSetup = () => post<TotpSetup>("/auth/totp/setup");
+export const confirmTotpSetup = (code: string) => post<void>("/auth/totp/confirm", { code: code.trim() });
 
 export const fetchOverview = () => get<AdminOverview>("/admin/overview");
 export const fetchStats = () => get<AdminStats>("/admin/stats");

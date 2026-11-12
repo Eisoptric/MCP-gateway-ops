@@ -1,67 +1,132 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
-import { ApiError, login } from "@/lib/api";
+import { isSignedOut, sessionQueryKey, useSession } from "@/hooks/use-session";
+import {
+  ApiError,
+  beginTotpSetup,
+  confirmTotpSetup,
+  login,
+  logout,
+  verifyLogin,
+  type AuthUserResponse,
+  type LoginStep,
+  type TotpSetup,
+} from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import { useAuthStore } from "@/stores/auth-store";
+
+const inputClass =
+  "mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-ring";
+const labelClass = "block text-[11px] uppercase tracking-[0.08em] text-muted-foreground";
+
+interface Challenge {
+  challenge: string;
+  method: "totp" | "email";
+  email: string;
+}
+
+/** Only a path inside this console: `next` comes from the URL and must not lead elsewhere. */
+function safeNext(next: string | null) {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/login")) {
+    return "/overview";
+  }
+  return next;
+}
+
+function detailOf(error: unknown): unknown {
+  if (!(error instanceof ApiError)) return undefined;
+  try {
+    return (JSON.parse(error.message) as { detail?: unknown }).detail;
+  } catch {
+    return error.message;
+  }
+}
+
+function needsFreshSignIn(error: unknown) {
+  return error instanceof ApiError && error.status === 403 && detailOf(error) === "Reauthentication required";
+}
 
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-background" />}>
-      <LoginForm />
+      <LoginFlow />
     </Suspense>
   );
 }
 
-function LoginForm() {
-  const { t, locale, setLocale } = useI18n();
+function LoginFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = useAuthStore((state) => state.token);
-  const hydrated = useAuthStore((state) => state.hydrated);
-  const setHydrated = useAuthStore((state) => state.setHydrated);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+  const queryClient = useQueryClient();
+  const session = useSession();
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+
+  const user = isSignedOut(session.error) ? undefined : session.data;
+  const target = safeNext(searchParams.get("next"));
+  const ready = Boolean(user?.is_platform_admin && !user.mfa_setup_required);
 
   useEffect(() => {
-    if (useAuthStore.persist.hasHydrated()) setHydrated(true);
-    return useAuthStore.persist.onFinishHydration(() => setHydrated(true));
-  }, [setHydrated]);
+    if (ready) router.replace(target);
+  }, [ready, target, router]);
 
-  useEffect(() => {
-    if (hydrated && token) {
-      router.replace(searchParams.get("next") || "/overview");
+  function advance(step: LoginStep, email: string) {
+    if (step.step === "code") {
+      setChallenge({ challenge: step.challenge, method: step.method, email });
+      return;
     }
-  }, [hydrated, token, router, searchParams]);
-
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setError("");
-    setPending(true);
-    try {
-      await login(email.trim(), password);
-      router.replace(searchParams.get("next") || "/overview");
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        setError(t("login.notAdmin"));
-      } else if (err instanceof ApiError && err.status === 401) {
-        setError(t("login.invalid"));
-      } else {
-        setError(t("common.apiError"));
-      }
-    } finally {
-      setPending(false);
-    }
+    setChallenge(null);
+    queryClient.setQueryData(sessionQueryKey, step.user);
   }
 
-  if (!hydrated || token) {
+  async function signOut() {
+    await logout().catch(() => undefined);
+    setChallenge(null);
+    await queryClient.resetQueries({ queryKey: sessionQueryKey });
+  }
+
+  if (ready || (session.isPending && !challenge)) {
     return <div className="min-h-screen bg-background" />;
   }
 
+  if (user && !user.is_platform_admin) {
+    return (
+      <Shell>
+        <NotOperator onSignOut={signOut} />
+      </Shell>
+    );
+  }
+
+  if (user) {
+    return (
+      <Shell>
+        <SetupStep
+          onSignOut={signOut}
+          onDone={() =>
+            queryClient.setQueryData<AuthUserResponse>(sessionQueryKey, { ...user, mfa_setup_required: false })
+          }
+        />
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell>
+      {challenge ? (
+        <CodeStep challenge={challenge} onStep={advance} onBack={() => setChallenge(null)} />
+      ) : (
+        <PasswordStep onStep={advance} />
+      )}
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  const { locale, setLocale } = useI18n();
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="flex h-12 items-center justify-between border-b border-border px-5">
@@ -84,43 +149,304 @@ function LoginForm() {
           </button>
         </div>
       </header>
-
-      <main className="flex flex-1 items-center justify-center px-6">
-        <form onSubmit={onSubmit} className="w-full max-w-[360px]">
-          <h1 className="text-[22px] font-medium tracking-tight">{t("login.title")}</h1>
-          <p className="mt-2 text-[13px] text-muted-foreground">{t("login.subtitle")}</p>
-
-          <label className="mt-8 block text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            {t("login.email")}
-            <input
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-ring"
-              required
-            />
-          </label>
-
-          <label className="mt-4 block text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            {t("login.password")}
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-ring"
-              required
-            />
-          </label>
-
-          {error ? <p className="mt-3 text-[12px] text-destructive">{error}</p> : null}
-
-          <Button type="submit" className="mt-6 w-full" disabled={pending}>
-            {pending ? t("login.signingIn") : t("login.submit")}
-          </Button>
-        </form>
+      <main className="flex flex-1 items-center justify-center px-6 py-10">
+        <div className="w-full max-w-[360px]">{children}</div>
       </main>
+    </div>
+  );
+}
+
+function Heading({ title, lead }: { title: string; lead: string }) {
+  return (
+    <>
+      <h1 className="text-[22px] font-medium tracking-tight">{title}</h1>
+      <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">{lead}</p>
+    </>
+  );
+}
+
+function ErrorText({ children }: { children: string }) {
+  if (!children) return null;
+  return (
+    <p role="alert" className="mt-3 text-[12px] text-destructive">
+      {children}
+    </p>
+  );
+}
+
+function PasswordStep({ onStep }: { onStep: (step: LoginStep, email: string) => void }) {
+  const { t, locale } = useI18n();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setPending(true);
+    try {
+      onStep(await login(email, password, locale === "zh" ? "zh-Hant" : "en-US"), email.trim());
+    } catch (caught) {
+      const detail = detailOf(caught);
+      if (!(caught instanceof ApiError)) {
+        setError(t("login.failed"));
+      } else if (caught.status === 403 && caught.message === "not_admin") {
+        setError(t("login.notAdmin"));
+      } else if (caught.status === 400 && caught.message === "mfa_unsupported") {
+        setError(t("login.mfaUnsupported"));
+      } else if (caught.status === 401) {
+        const reset = typeof detail === "object" && detail !== null && "migration" in detail;
+        setError(t(reset ? "login.resetRequired" : "login.invalid"));
+      } else if (caught.status === 429) {
+        setError(t("login.tooMany"));
+      } else {
+        setError(t("common.apiError"));
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <Heading title={t("login.title")} lead={t("login.subtitle")} />
+      <label className={`mt-8 ${labelClass}`}>
+        {t("login.email")}
+        <input
+          type="email"
+          autoComplete="username"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className={inputClass}
+          required
+        />
+      </label>
+      <label className={`mt-4 ${labelClass}`}>
+        {t("login.password")}
+        <input
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          className={inputClass}
+          required
+        />
+      </label>
+      <ErrorText>{error}</ErrorText>
+      <Button type="submit" className="mt-6 w-full" disabled={pending}>
+        {pending ? t("login.signingIn") : t("login.submit")}
+      </Button>
+    </form>
+  );
+}
+
+function CodeStep({
+  challenge,
+  onStep,
+  onBack,
+}: {
+  challenge: Challenge;
+  onStep: (step: LoginStep, email: string) => void;
+  onBack: () => void;
+}) {
+  const { t } = useI18n();
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setPending(true);
+    try {
+      onStep(await verifyLogin(challenge.method, challenge.challenge, code), challenge.email);
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 403 && caught.message === "not_admin") {
+        setError(t("login.notAdmin"));
+      } else if (caught instanceof ApiError && caught.status === 429) {
+        setError(t("login.tooMany"));
+      } else if (caught instanceof ApiError && caught.status < 500) {
+        setError(t("login.codeInvalid"));
+      } else {
+        setError(t("common.apiError"));
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <Heading
+        title={t("login.codeTitle")}
+        lead={
+          challenge.method === "totp" ? t("login.totpLead") : t("login.emailLead", { email: challenge.email })
+        }
+      />
+      <label className={`mt-8 ${labelClass}`}>
+        {t("login.code")}
+        <input
+          value={code}
+          autoComplete="one-time-code"
+          autoFocus
+          onChange={(event) => setCode(event.target.value)}
+          className={`${inputClass} font-mono tracking-[0.12em]`}
+          required
+        />
+      </label>
+      <ErrorText>{error}</ErrorText>
+      <Button type="submit" className="mt-6 w-full" disabled={pending}>
+        {pending ? t("login.verifying") : t("login.verify")}
+      </Button>
+      <Button variant="ghost" className="mt-2 w-full text-muted-foreground" disabled={pending} onClick={onBack}>
+        {t("login.back")}
+      </Button>
+    </form>
+  );
+}
+
+function SetupStep({ onDone, onSignOut }: { onDone: () => void; onSignOut: () => Promise<void> }) {
+  const { t } = useI18n();
+  const [setup, setSetup] = useState<{ data: TotpSetup; qr: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  // Setup needs a sign-in from the last few minutes. An older session has to sign in again.
+  const [stale, setStale] = useState(false);
+
+  function fail(caught: unknown) {
+    if (needsFreshSignIn(caught)) {
+      setStale(true);
+    } else if (caught instanceof ApiError && caught.status === 429) {
+      // After too many wrong codes the API discards the key, so setup starts over.
+      setSetup(null);
+      setCode("");
+      setSaved(false);
+      setError(t("login.tooMany"));
+    } else if (caught instanceof ApiError && caught.status === 409) {
+      setSetup(null);
+      setCode("");
+      setSaved(false);
+      setError(t("login.setupRestart"));
+    } else if (caught instanceof ApiError && caught.status === 400) {
+      setError(t("login.codeInvalid"));
+    } else {
+      setError(t("common.apiError"));
+    }
+  }
+
+  async function start() {
+    setError("");
+    setPending(true);
+    try {
+      const data = await beginTotpSetup();
+      // Drawn in the browser: the key is never sent to another service.
+      const qr = await QRCode.toDataURL(data.otpauth_url, { margin: 1, width: 352 });
+      setSetup({ data, qr });
+    } catch (caught) {
+      fail(caught);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function confirm(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setPending(true);
+    try {
+      await confirmTotpSetup(code);
+      onDone();
+    } catch (caught) {
+      fail(caught);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (stale) {
+    return (
+      <div>
+        <Heading title={t("login.setupTitle")} lead={t("login.setupReauth")} />
+        <Button className="mt-6 w-full" onClick={onSignOut}>
+          {t("login.signInAgain")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!setup) {
+    return (
+      <div>
+        <Heading title={t("login.setupTitle")} lead={t("login.setupLead")} />
+        <ErrorText>{error}</ErrorText>
+        <Button className="mt-6 w-full" disabled={pending} onClick={start}>
+          {pending ? t("common.working") : t("login.setupStart")}
+        </Button>
+        <Button variant="ghost" className="mt-2 w-full text-muted-foreground" disabled={pending} onClick={onSignOut}>
+          {t("login.signOut")}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={confirm}>
+      <Heading title={t("login.setupTitle")} lead={t("login.setupScan")} />
+      <Image
+        src={setup.qr}
+        alt={t("login.setupQr")}
+        width={176}
+        height={176}
+        unoptimized
+        className="mt-6 rounded-md border border-border bg-white"
+      />
+      <div className={`mt-4 ${labelClass}`}>{t("login.setupKey")}</div>
+      <code className="mt-2 block break-all rounded-md border border-border bg-card px-3 py-2 font-mono text-[12px]">
+        {setup.data.secret}
+      </code>
+
+      <div className={`mt-6 ${labelClass}`}>{t("login.setupBackup")}</div>
+      <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">{t("login.setupBackupLead")}</p>
+      <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-md border border-border bg-card px-3 py-2 font-mono text-[12px]">
+        {setup.data.backup_codes.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      <label className="mt-3 flex items-center gap-2 text-[12px] text-muted-foreground">
+        <input type="checkbox" checked={saved} onChange={(event) => setSaved(event.target.checked)} />
+        {t("login.setupSaved")}
+      </label>
+
+      <label className={`mt-6 ${labelClass}`}>
+        {t("login.setupCode")}
+        <input
+          value={code}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          onChange={(event) => setCode(event.target.value)}
+          className={`${inputClass} font-mono tracking-[0.12em]`}
+          required
+        />
+      </label>
+      <ErrorText>{error}</ErrorText>
+      <Button type="submit" className="mt-6 w-full" disabled={pending || !saved}>
+        {pending ? t("common.working") : t("login.setupConfirm")}
+      </Button>
+    </form>
+  );
+}
+
+function NotOperator({ onSignOut }: { onSignOut: () => Promise<void> }) {
+  const { t } = useI18n();
+  return (
+    <div>
+      <Heading title={t("login.title")} lead={t("login.notAdmin")} />
+      <Button className="mt-6 w-full" onClick={onSignOut}>
+        {t("login.signOut")}
+      </Button>
     </div>
   );
 }
