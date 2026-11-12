@@ -8,7 +8,9 @@ import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { isSignedOut, sessionQueryKey, useSession } from "@/hooks/use-session";
 import {
+  addPasskey,
   ApiError,
+  apiErrorDetail,
   beginTotpSetup,
   confirmTotpSetup,
   isReauthRequired,
@@ -117,7 +119,13 @@ function LoginFlow() {
   return (
     <Shell>
       {challenge ? (
-        <CodeStep challenge={challenge} onStep={advance} onBack={() => setChallenge(null)} />
+        <CodeStep
+          // An emailed code can leave a passkey or authenticator still to prove: start that step clean.
+          key={`${challenge.method}:${challenge.passkey}`}
+          challenge={challenge}
+          onStep={advance}
+          onBack={() => setChallenge(null)}
+        />
       ) : (
         <PasswordStep onStep={advance} />
       )}
@@ -410,6 +418,21 @@ function SetupStep({ onDone, onSignOut }: { onDone: () => void; onSignOut: () =>
     }
   }
 
+  async function addPasskeyInstead() {
+    setError("");
+    setPending(true);
+    try {
+      await addPasskey();
+      onDone();
+    } catch (caught) {
+      if (isReauthRequired(caught)) setStale(true);
+      else if (passkeyDismissed(caught)) setError(t("passkeys.dismissed"));
+      else setError(apiErrorDetail(caught, t("common.apiError")));
+    } finally {
+      setPending(false);
+    }
+  }
+
   if (stale) {
     return (
       <div>
@@ -426,8 +449,18 @@ function SetupStep({ onDone, onSignOut }: { onDone: () => void; onSignOut: () =>
       <div>
         <Heading title={t("login.setupTitle")} lead={t("login.setupLead")} />
         <ErrorText>{error}</ErrorText>
-        <Button className="mt-6 w-full" disabled={pending} onClick={start}>
-          {pending ? t("common.working") : t("login.setupStart")}
+        {passkeysSupported() ? (
+          <Button className="mt-6 w-full" disabled={pending} onClick={addPasskeyInstead}>
+            {t("passkeys.add")}
+          </Button>
+        ) : null}
+        <Button
+          variant={passkeysSupported() ? "outline" : "default"}
+          className={passkeysSupported() ? "mt-2 w-full" : "mt-6 w-full"}
+          disabled={pending}
+          onClick={start}
+        >
+          {t("login.setupStart")}
         </Button>
         <Button variant="ghost" className="mt-2 w-full text-muted-foreground" disabled={pending} onClick={onSignOut}>
           {t("login.signOut")}
@@ -438,7 +471,7 @@ function SetupStep({ onDone, onSignOut }: { onDone: () => void; onSignOut: () =>
 
   return (
     <form onSubmit={confirm}>
-      <Heading title={t("login.setupTitle")} lead={t("login.setupScan")} />
+      <Heading title={t("login.setupTotpTitle")} lead={t("login.setupScan")} />
       <Image
         src={setup.qr}
         alt={t("login.setupQr")}

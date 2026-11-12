@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { SectionLabel } from "@/components/ui/section-label";
-import { useSession } from "@/hooks/use-session";
+import { sessionQueryKey, useSession } from "@/hooks/use-session";
 import {
   addPasskey,
   ApiError,
@@ -46,6 +46,9 @@ export function PasskeySection() {
     await deletePasskey(passkey.id);
     await refresh();
     toast.success(t("passkeys.removed"));
+    // If that was the account's only second step, the API now asks for a new one: re-read the
+    // session so the console goes to setup instead of failing on every request.
+    await queryClient.invalidateQueries({ queryKey: sessionQueryKey });
   }
 
   /** Runs a change. If the API wants the password first, asks for it and then runs it again. */
