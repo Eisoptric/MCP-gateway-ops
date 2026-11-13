@@ -8,8 +8,8 @@ import { useI18n } from "@/lib/i18n";
 const items = [
   { href: "/overview", key: "nav.overview" },
   { href: "/orgs", key: "nav.orgs" },
+  { href: "/users", key: "nav.users" },
   { href: "/connections", key: "nav.connections" },
-  { href: "/runtimes", key: "nav.runtimes" },
   { href: "/mcp", key: "nav.mcp" },
   { href: "/usage", key: "nav.usage" },
   { href: "/audit", key: "nav.audit" },

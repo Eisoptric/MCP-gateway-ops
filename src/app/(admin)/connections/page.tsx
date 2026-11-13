@@ -1,12 +1,20 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { QueryGate } from "@/components/layout/query-gate";
+import { DataTable, type Column, type TableFilter } from "@/components/ui/data-table";
 import { StatusLabel } from "@/components/ui/status-dot";
 import type { StatusTone } from "@/components/ui/status-dot";
 import { useConnections } from "@/hooks/use-admin";
-import { formatHeartbeat } from "@/lib/format";
+import type { AdminConnectionChannel } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+
+interface ChannelRow extends AdminConnectionChannel {
+  key: string;
+  organization_id: string;
+  organization_name: string;
+}
 
 function tone(status: string): StatusTone {
   if (["connected", "healthy", "active"].includes(status)) return "active";
@@ -15,9 +23,71 @@ function tone(status: string): StatusTone {
   return "disconnected";
 }
 
+function uniqueOptions(values: string[]) {
+  return [...new Set(values)].sort().map((value) => ({ value, label: value }));
+}
+
 export default function ConnectionsPage() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const connections = useConnections();
+
+  const rows = useMemo<ChannelRow[]>(
+    () =>
+      (connections.data ?? []).flatMap((org) =>
+        org.channels.map((channel) => ({
+          ...channel,
+          key: `${org.organization_id}:${channel.id}`,
+          organization_id: org.organization_id,
+          organization_name: org.organization_name,
+        }))
+      ),
+    [connections.data]
+  );
+
+  const columns = useMemo<Column<ChannelRow>[]>(
+    () => [
+      {
+        id: "organization",
+        header: t("connections.organization"),
+        sortValue: (row) => row.organization_name,
+        cell: (row) => (
+          <Link href={`/orgs/${row.organization_id}`} className="font-medium hover:underline">
+            {row.organization_name}
+          </Link>
+        ),
+      },
+      {
+        id: "channel",
+        header: t("connections.channel"),
+        sortValue: (row) => row.name,
+        cell: (row) => row.name,
+      },
+      {
+        id: "status",
+        header: t("connections.status"),
+        sortValue: (row) => row.status,
+        cell: (row) => (
+          <StatusLabel tone={tone(row.status)}>
+            {row.status}
+            {row.detail ? ` · ${row.detail}` : ""}
+          </StatusLabel>
+        ),
+      },
+    ],
+    [t]
+  );
+
+  const filters = useMemo<TableFilter<ChannelRow>[]>(
+    () => [
+      {
+        id: "status",
+        label: t("connections.allStatuses"),
+        options: uniqueOptions(rows.map((row) => row.status)),
+        matches: (row, value) => row.status === value,
+      },
+    ],
+    [rows, t]
+  );
 
   return (
     <QueryGate
@@ -28,34 +98,18 @@ export default function ConnectionsPage() {
         <h1 className="text-[22px] font-medium tracking-tight">{t("connections.title")}</h1>
         <p className="mt-2 max-w-xl text-[13px] text-muted-foreground">{t("connections.subtitle")}</p>
 
-        {(connections.data ?? []).length === 0 ? (
-          <p className="mt-10 text-[13px] text-muted-foreground">{t("connections.empty")}</p>
-        ) : (
-          <div className="mt-10 space-y-10">
-            {(connections.data ?? []).map((org) => (
-              <section key={org.organization_id}>
-                <Link href={`/orgs/${org.organization_id}`} className="text-[13px] font-medium hover:underline">
-                  {org.organization_name}
-                </Link>
-                <ul className="mt-3 divide-y divide-border border-y border-border">
-                  {org.channels.map((channel) => (
-                    <li key={channel.id} className="grid grid-cols-[160px_1fr_180px] items-center gap-4 py-4">
-                      <span className="text-[13px]">{channel.name}</span>
-                      <StatusLabel tone={tone(channel.status)}>
-                        {channel.status}
-                        {channel.version ? ` · ${channel.version}` : ""}
-                        {channel.detail ? ` · ${channel.detail}` : ""}
-                      </StatusLabel>
-                      <span className="justify-self-end text-[12px] text-muted-foreground">
-                        {formatHeartbeat(channel.last_heartbeat_at, locale)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        )}
+        <div className="mt-8">
+          <DataTable
+            rows={rows}
+            columns={columns}
+            rowKey={(row) => row.key}
+            searchText={(row) => row.organization_name}
+            searchPlaceholder={t("connections.search")}
+            filters={filters}
+            initialSort={{ id: "organization", direction: "asc" }}
+            empty={t("connections.empty")}
+          />
+        </div>
       </div>
     </QueryGate>
   );

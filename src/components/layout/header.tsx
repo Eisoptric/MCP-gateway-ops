@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuthStore } from "@/lib/auth";
+import { useSession } from "@/hooks/use-session";
 import { logout } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -12,7 +12,7 @@ export function Header() {
   const { locale, setLocale, t } = useI18n();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const userName = useAuthStore((state) => state.user?.name);
+  const userName = useSession().data?.name;
 
   return (
     <header className="relative flex h-12 shrink-0 items-center border-b border-border bg-background px-5">
@@ -53,7 +53,8 @@ export function Header() {
             type="button"
             className="text-muted-foreground hover:text-foreground"
             onClick={async () => {
-              await logout();
+              // Signing out locally must not depend on the API answering.
+              await logout().catch(() => undefined);
               queryClient.clear();
               router.replace("/login");
             }}

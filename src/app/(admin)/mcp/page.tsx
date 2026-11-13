@@ -1,16 +1,93 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { QueryGate } from "@/components/layout/query-gate";
+import { DataTable, type Column, type TableFilter } from "@/components/ui/data-table";
 import { SectionLabel } from "@/components/ui/section-label";
 import { StatusLabel } from "@/components/ui/status-dot";
 import { useMcp } from "@/hooks/use-admin";
+import type { AdminMcp } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+
+type McpServer = AdminMcp["items"][number];
+
+function isConnected(server: McpServer) {
+  return server.status === "connected";
+}
 
 export default function McpPage() {
   const { t } = useI18n();
   const mcp = useMcp();
   const data = mcp.data;
+
+  const columns = useMemo<Column<McpServer>[]>(
+    () => [
+      {
+        id: "server",
+        header: t("mcp.server"),
+        sortValue: (server) => server.name,
+        cell: (server) => (
+          <div className="min-w-0">
+            <div className="font-medium">{server.name}</div>
+            {server.error ? (
+              <div className="mt-0.5 max-w-[520px] truncate text-[12px] text-destructive" title={server.error}>
+                {server.error}
+              </div>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "organization",
+        header: t("mcp.organization"),
+        sortValue: (server) => server.organization_name,
+        cell: (server) => (
+          <Link
+            href={`/orgs/${server.organization_id}`}
+            className="text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {server.organization_name}
+          </Link>
+        ),
+      },
+      {
+        id: "tools",
+        header: t("mcp.tools"),
+        align: "right",
+        className: "w-[120px]",
+        sortValue: (server) => server.tools,
+        cell: (server) => <span className="font-mono">{server.tools}</span>,
+      },
+      {
+        id: "status",
+        header: t("mcp.status"),
+        className: "w-[140px]",
+        sortValue: (server) => (isConnected(server) ? 1 : 0),
+        cell: (server) => (
+          <StatusLabel tone={isConnected(server) ? "active" : "error"}>
+            {isConnected(server) ? t("mcp.connected") : t("mcp.error")}
+          </StatusLabel>
+        ),
+      },
+    ],
+    [t]
+  );
+
+  const filters = useMemo<TableFilter<McpServer>[]>(
+    () => [
+      {
+        id: "status",
+        label: t("mcp.allStatuses"),
+        options: [
+          { value: "connected", label: t("mcp.connected") },
+          { value: "error", label: t("mcp.error") },
+        ],
+        matches: (server, value) => isConnected(server) === (value === "connected"),
+      },
+    ],
+    [t]
+  );
 
   return (
     <QueryGate isPending={mcp.isPending && !data} isError={mcp.isError && !data}>
@@ -25,31 +102,17 @@ export default function McpPage() {
           <Stat label={t("mcp.errors")} value={String(data?.errors ?? 0)} />
         </div>
 
-        {(data?.items ?? []).length === 0 ? (
-          <p className="mt-10 text-[13px] text-muted-foreground">{t("mcp.empty")}</p>
-        ) : (
-          <ul className="mt-10 divide-y divide-border border-y border-border">
-            {(data?.items ?? []).map((item) => (
-              <li key={item.id} className="grid grid-cols-[minmax(0,1fr)_160px_100px] items-center gap-4 py-4">
-                <div>
-                  <div className="text-[13px] font-medium">{item.name}</div>
-                  <Link
-                    href={`/orgs/${item.organization_id}`}
-                    className="mt-1 text-[12px] text-muted-foreground hover:text-foreground"
-                  >
-                    {item.organization_name}
-                  </Link>
-                </div>
-                <span className="text-[12px] text-muted-foreground">
-                  {item.tools} {t("mcp.tools")}
-                </span>
-                <StatusLabel tone={item.status === "connected" ? "active" : "error"}>
-                  {item.status === "connected" ? t("mcp.connected") : t("mcp.error")}
-                </StatusLabel>
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="mt-8">
+          <DataTable
+            rows={data?.items ?? []}
+            columns={columns}
+            rowKey={(server) => server.id}
+            searchText={(server) => `${server.name} ${server.organization_name}`}
+            searchPlaceholder={t("mcp.search")}
+            filters={filters}
+            empty={t("mcp.empty")}
+          />
+        </div>
       </div>
     </QueryGate>
   );

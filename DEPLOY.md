@@ -20,4 +20,6 @@ GitHub authenticates with Workload Identity Federation. Set these repository val
 
 `BACKEND_PUBLIC_URL` is compiled into the `/saturn-api` rewrite. Deploy backend first, then this service.
 
+The backend must list this console's public origin in its `CORS_ORIGINS`. Sessions are cookies, and the backend refuses a cookie-authenticated change from any other origin, so without it every save in the console answers 403.
+
 The full GCP bootstrap lives in the backend repo at `infra/gcp/README.md`.

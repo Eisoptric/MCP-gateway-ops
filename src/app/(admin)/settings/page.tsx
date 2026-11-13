@@ -1,5 +1,6 @@
 "use client";
 
+import { SignInMethods } from "@/components/account/sign-in-methods";
 import { QueryGate } from "@/components/layout/query-gate";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useSettings } from "@/hooks/use-admin";
@@ -73,6 +74,8 @@ export default function SettingsPage() {
             ))}
           </ul>
         </section>
+
+        <SignInMethods />
       </div>
     </QueryGate>
   );

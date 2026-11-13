@@ -1,4 +1,10 @@
-import { useAuthStore } from "@/lib/auth";
+import { loginVerifiers } from "@/lib/login-verifier";
+import {
+  createPasskey,
+  getPasskey,
+  type PasskeyCreationOptions,
+  type PasskeyRequestOptions,
+} from "@/lib/webauthn";
 
 const API_BASE = "/saturn-api";
 
@@ -37,11 +43,38 @@ export interface AuthUserResponse {
   status: string;
   is_platform_admin: boolean;
   role: string | null;
+  /** The account has no authenticator app yet. The API refuses an operator everything until it does. */
+  mfa_setup_required: boolean;
 }
 
-export interface LoginResponse {
-  token: string;
-  user: AuthUserResponse;
+interface LoginResponse {
+  user: AuthUserResponse | null;
+  mfa_required: boolean;
+  challenge: string | null;
+  methods: string[];
+}
+
+/** Where a sign-in stands: finished, or waiting for the second factor. */
+export type LoginStep =
+  | { step: "done"; user: AuthUserResponse }
+  | {
+      step: "code";
+      challenge: string;
+      /** The code this account can type, if any. */
+      method: "totp" | "email" | null;
+      /** The account has a passkey it can use instead. */
+      passkey: boolean;
+    };
+
+export interface Passkey {
+  id: string;
+  created_at: string;
+}
+
+export interface TotpSetup {
+  secret: string;
+  otpauth_url: string;
+  backup_codes: string[];
 }
 
 export interface AdminStats {
@@ -93,7 +126,6 @@ export interface AdminOrg {
   connection_count: number;
   runtime_status: string;
   mcp_status: string;
-  last_heartbeat_at: string | null;
 }
 
 export interface AdminMember {
@@ -153,8 +185,6 @@ export interface AdminConnectionChannel {
   id: string;
   name: string;
   status: string;
-  last_heartbeat_at: string | null;
-  version: string | null;
   detail: string | null;
 }
 
@@ -162,20 +192,6 @@ export interface AdminOrgConnections {
   organization_id: string;
   organization_name: string;
   channels: AdminConnectionChannel[];
-}
-
-export interface AdminRuntime {
-  id: string;
-  organization_id: string;
-  organization_name: string;
-  status: string;
-  region: string;
-  version: string;
-  deployment_mode: string;
-  active_runs: number;
-  agent_count: number;
-  last_heartbeat_at: string | null;
-  last_error: string | null;
 }
 
 export interface AdminMcp {
@@ -215,28 +231,12 @@ export interface AdminSettings {
   admins: AdminUser[];
 }
 
-function toSession(token: string, user: AuthUserResponse) {
-  return {
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      status: user.status,
-      isPlatformAdmin: user.is_platform_admin,
-      role: user.role ?? undefined,
-    },
-  };
-}
-
-async function request<T>(path: string, init?: RequestInit, auth = true): Promise<T> {
+// The session is an HttpOnly cookie the API sets at sign-in. The browser sends it with every
+// same-origin request, so nothing here stores or attaches a token.
+async function send(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type") && init?.body) {
     headers.set("Content-Type", "application/json");
-  }
-  const token = useAuthStore.getState().token;
-  if (auth && token) {
-    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(`${API_BASE}${path}`, {
@@ -245,17 +245,16 @@ async function request<T>(path: string, init?: RequestInit, auth = true): Promis
     cache: "no-store",
   });
 
-  if (response.status === 401 && auth && path !== "/auth/login") {
-    useAuthStore.getState().clear();
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-      window.location.assign("/login");
-    }
-  }
-
   if (!response.ok) {
     const text = await response.text();
     throw new ApiError(response.status, text || response.statusText);
   }
+
+  return response;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await send(path, init);
 
   if (response.status === 204) {
     return undefined as T;
@@ -268,82 +267,178 @@ function get<T>(path: string) {
   return request<T>(path);
 }
 
-function post<T>(path: string, body?: unknown, auth = true) {
-  return request<T>(
-    path,
-    {
-      method: "POST",
-      body: body === undefined ? undefined : JSON.stringify(body),
-    },
-    auth
-  );
+const PAGE_LIMIT = 500;
+
+/** Reads a paged list endpoint to the end, so a long list is never silently cut short. */
+async function getAll<T>(path: string) {
+  const rows: T[] = [];
+  for (;;) {
+    const page = await get<T[]>(`${path}?limit=${PAGE_LIMIT}&offset=${rows.length}`);
+    rows.push(...page);
+    if (page.length < PAGE_LIMIT) return rows;
+  }
+}
+
+function post<T>(path: string, body?: unknown) {
+  return request<T>(path, {
+    method: "POST",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
 function patch<T>(path: string, body: unknown) {
   return request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 }
 
-export async function login(email: string, password: string) {
-  const result = await post<LoginResponse>("/auth/login", { email, password }, false);
+async function loginStep(result: LoginResponse): Promise<LoginStep> {
+  if (result.mfa_required && result.challenge) {
+    const method = (["totp", "email"] as const).find((item) => result.methods.includes(item)) ?? null;
+    const passkey = result.methods.includes("passkey");
+    if (!method && !passkey) throw new ApiError(400, "mfa_unsupported");
+    return { step: "code", challenge: result.challenge, method, passkey };
+  }
+  if (!result.user) throw new ApiError(401, "Invalid email or password");
   if (!result.user.is_platform_admin) {
-    await request<void>(
-      "/auth/logout",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${result.token}` },
-      },
-      false
-    );
+    await logout();
     throw new ApiError(403, "not_admin");
   }
-  useAuthStore.getState().setSession(toSession(result.token, result.user));
-  return result;
+  return { step: "done", user: result.user };
 }
 
-export async function logout() {
+function migrationHint(error: ApiError) {
   try {
-    await post<void>("/auth/logout");
-  } finally {
-    useAuthStore.getState().clear();
+    const detail = (JSON.parse(error.message) as { detail?: { migration?: unknown } }).detail;
+    return typeof detail === "object" && detail !== null ? detail.migration : undefined;
+  } catch {
+    return undefined;
   }
 }
 
-export async function fetchMe() {
-  const user = await get<AuthUserResponse>("/auth/me");
-  if (!user.is_platform_admin) {
-    useAuthStore.getState().clear();
-    throw new ApiError(403, "not_admin");
+/**
+ * Signs in with the password hashed here (v2), so the API never receives anything cheap to
+ * guess from. An account stored under an older form has to prove that form once, and the API
+ * then moves it to v2:
+ *
+ * - The API asks a PBKDF2 account for v1, then for the password itself.
+ * - It cannot tell that an Argon2 hash covers v1 (the seeded operator's does), so a plain
+ *   refusal is retried once with v1. A wrong password therefore counts as two failed attempts.
+ */
+export async function login(email: string, password: string, locale: string): Promise<LoginStep> {
+  const normalized = email.trim().toLowerCase();
+  const { v1, v2 } = await loginVerifiers(normalized, password);
+  const proof: { legacy_v1?: string; legacy_password?: string } = {};
+  for (;;) {
+    try {
+      return await loginStep(
+        await post<LoginResponse>("/auth/login", { email: normalized, password: v2, locale, ...proof })
+      );
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      const hint = migrationHint(error);
+      if (hint === "password" && !proof.legacy_password) proof.legacy_password = password;
+      else if (hint !== "reset" && !proof.legacy_v1) proof.legacy_v1 = v1;
+      else throw error;
+    }
   }
-  const token = useAuthStore.getState().token;
-  if (token) {
-    useAuthStore.getState().setSession(toSession(token, user));
-  }
-  return user;
 }
+
+/** Finishes a sign-in with the authenticator (or backup) code, or the emailed code. */
+export async function verifyLogin(method: "totp" | "email", challenge: string, code: string) {
+  return loginStep(await post<LoginResponse>(`/auth/login/${method}`, { challenge, code: code.trim() }));
+}
+
+/** Finishes a sign-in with a passkey on this device. Throws a DOMException if the prompt is dismissed. */
+export async function verifyLoginWithPasskey(challenge: string) {
+  const options = await post<PasskeyRequestOptions>("/auth/login/passkey/options", { challenge });
+  const credential = await getPasskey(options);
+  return loginStep(await post<LoginResponse>("/auth/login/passkey", { challenge, credential }));
+}
+
+/** The API wants a sign-in from the last few minutes before it changes how the account signs in. */
+export function isReauthRequired(error: unknown) {
+  if (!(error instanceof ApiError) || error.status !== 403) return false;
+  return apiErrorDetail(error, "") === "Reauthentication required";
+}
+
+/** Proves the password again, which makes this session count as freshly signed in. */
+export async function reauthenticate(email: string, password: string) {
+  const { v2 } = await loginVerifiers(email.trim().toLowerCase(), password);
+  return post<void>("/auth/reauth", { password: v2 });
+}
+
+/** The signed-in account's second steps. `totp` is true once an authenticator app is confirmed. */
+export const fetchMfa = () => get<{ totp?: boolean; passkeys: Passkey[] }>("/auth/mfa");
+
+/** Makes a passkey on this device and saves it to the account. It works only on this address. */
+export async function addPasskey() {
+  const options = await post<PasskeyCreationOptions>("/auth/passkeys/options");
+  const credential = await createPasskey(options);
+  return post<Passkey>("/auth/passkeys", { credential });
+}
+
+export const deletePasskey = (id: string) => request<void>(`/auth/passkeys/${id}`, { method: "DELETE" });
+
+export const logout = () => post<void>("/auth/logout");
+export const fetchMe = () => get<AuthUserResponse>("/auth/me");
+/** Starts authenticator setup. Each call makes a new key and new backup codes. */
+export const beginTotpSetup = () => post<TotpSetup>("/auth/totp/setup");
+export const confirmTotpSetup = (code: string) => post<void>("/auth/totp/confirm", { code: code.trim() });
 
 export const fetchOverview = () => get<AdminOverview>("/admin/overview");
 export const fetchStats = () => get<AdminStats>("/admin/stats");
-export const fetchOrgs = () => get<AdminOrg[]>("/admin/orgs");
+export const fetchOrgs = () => getAll<AdminOrg>("/admin/orgs");
 export const fetchOrg = (id: string) => get<AdminOrgDetail>(`/admin/orgs/${id}`);
-export const fetchUsers = () => get<AdminUser[]>("/admin/users");
+export const fetchUsers = () => getAll<AdminUser>("/admin/users");
 export const fetchConnections = () => get<AdminOrgConnections[]>("/admin/connections");
-export const fetchRuntimes = () => get<AdminRuntime[]>("/admin/runtimes");
 export const fetchMcp = () => get<AdminMcp>("/admin/mcp");
-export const fetchUsage = () => get<AdminUsageRow[]>("/admin/usage");
-export const fetchAudit = () => get<AdminEvent[]>("/admin/audit");
+export const fetchUsage = (days?: number) =>
+  get<AdminUsageRow[]>(days ? `/admin/usage?days=${days}` : "/admin/usage");
+export const fetchAuditEvents = () => get<string[]>("/admin/audit/events");
+
+export interface AuditQuery {
+  limit: number;
+  offset: number;
+  organizationId?: string;
+  event?: string;
+  since?: string;
+}
+
+export async function fetchAudit(query: AuditQuery) {
+  const params = new URLSearchParams({ limit: String(query.limit), offset: String(query.offset) });
+  if (query.organizationId) params.set("organization_id", query.organizationId);
+  if (query.event) params.set("event", query.event);
+  if (query.since) params.set("since", query.since);
+  const response = await send(`/admin/audit?${params}`);
+  const items = (await response.json()) as AdminEvent[];
+  const total = Number(response.headers.get("X-Total-Count"));
+  return { items, total: Number.isFinite(total) ? Math.max(total, items.length) : items.length };
+}
 export const fetchSettings = () => get<AdminSettings>("/admin/settings");
+
+/**
+ * The API uses an operator-chosen password only in local development. In production it ignores
+ * one: the new user is emailed a one-time code and chooses their own. So the forms offer the
+ * field only in a development build.
+ */
+export const LOCAL_PASSWORDS = process.env.NODE_ENV !== "production";
 
 export function onboardOrg(body: {
   name: string;
   admin_email: string;
   admin_name: string;
-  admin_password: string;
+  admin_password?: string;
   admin_title?: string;
   plan?: string;
   kind?: string;
 }) {
   return post<AdminOrgDetail>("/admin/orgs", body);
 }
+
+/** The plans each kind of account can be on. */
+export const PLANS: Record<string, string[]> = {
+  personal: ["free", "pro"],
+  organization: ["team", "enterprise"],
+};
 
 export function updateOrg(
   id: string,
@@ -357,7 +452,7 @@ export function createOrgMember(
   body: {
     email: string;
     name: string;
-    password: string;
+    password?: string;
     title?: string;
     role?: string;
     status?: string;
@@ -374,6 +469,7 @@ export function updateOrgMember(
   return patch<AdminMember>(`/admin/orgs/${orgId}/members/${employeeId}`, body);
 }
 
-export function resetOrgMemberPassword(orgId: string, employeeId: string, password: string) {
-  return post<AdminMember>(`/admin/orgs/${orgId}/members/${employeeId}/password`, { password });
+/** Signs the member out everywhere and emails them a one-time code to choose a new password. */
+export function resetOrgMemberPassword(orgId: string, employeeId: string) {
+  return post<AdminMember>(`/admin/orgs/${orgId}/members/${employeeId}/password`);
 }

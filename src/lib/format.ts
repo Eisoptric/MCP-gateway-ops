@@ -15,18 +15,6 @@ export function relativeTime(iso: string, locale: "en" | "zh" = "en") {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export function formatHeartbeat(iso: string | null, locale: "en" | "zh" = "en") {
-  if (!iso) return locale === "zh" ? "尚無心跳" : "No heartbeat";
-  const diff = Date.now() - new Date(iso).getTime();
-  const seconds = Math.max(0, Math.floor(diff / 1000));
-  if (locale === "zh") {
-    if (seconds < 60) return `${seconds} 秒前`;
-    return relativeTime(iso, locale);
-  }
-  if (seconds < 60) return `${seconds} sec ago`;
-  return relativeTime(iso, locale);
-}
-
 export function formatDay(iso: string, locale: "en" | "zh" = "en") {
   const date = new Date(iso);
   if (locale === "zh") {
@@ -36,5 +24,16 @@ export function formatDay(iso: string, locale: "en" | "zh" = "en") {
     year: "numeric",
     month: "short",
     day: "numeric",
+  });
+}
+
+export function formatDateTime(iso: string, locale: "en" | "zh" = "en") {
+  return new Date(iso).toLocaleString(locale === "zh" ? "zh-TW" : "en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
 }
