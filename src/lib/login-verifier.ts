@@ -18,10 +18,10 @@ async function sha256(text: string) {
  * older single SHA-256, sent only when the API asks an account to prove it.
  */
 export async function loginVerifiers(email: string, password: string) {
-  const v1 = "v1." + hex(await sha256("saturn-login-v1\n" + password));
+  const v1 = "v1." + hex(await sha256("eisoptric-login-v1\n" + password));
   const master = await argon2id({
     password,
-    salt: await sha256("saturn-argon2-salt-v1\n" + email),
+    salt: await sha256("eisoptric-argon2-salt-v1\n" + email),
     parallelism: 1,
     iterations: 2,
     memorySize: 19456,
@@ -30,7 +30,7 @@ export async function loginVerifiers(email: string, password: string) {
   });
   const key = await crypto.subtle.importKey("raw", new Uint8Array(master), "HKDF", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: encoder.encode("saturn-login-v2") },
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: encoder.encode("eisoptric-login-v2") },
     key,
     256
   );

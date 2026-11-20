@@ -15,6 +15,6 @@ export const useLocaleStore = create<LocaleState>()(
       locale: "zh",
       setLocale: (locale) => set({ locale }),
     }),
-    { name: "saturn-admin-locale" }
+    { name: "gateway-ops-locale" }
   )
 );

@@ -20,8 +20,8 @@ const notoSansTC = Noto_Sans_TC({
 });
 
 export const metadata: Metadata = {
-  title: "Saturn Admin",
-  description: "Saturn operator console — platform operations",
+  title: "MCP Gateway Ops",
+  description: "Eisoptric operator console for MCP Gateway",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

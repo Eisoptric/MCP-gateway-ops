@@ -1,4 +1,4 @@
-name: saturn
+name: gateway-ops
 
 include:
   - path: ../docker-compose.yml
