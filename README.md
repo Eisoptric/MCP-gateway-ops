@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3001](http://localhost:3001) and sign in as the platform admin the backend seeded from its `SEED_USER_EMAIL` and `SEED_USER_PASSWORD`.
+Sign up at `SEED_USER_EMAIL` in the customer console first: the emailed code makes that account the platform admin while the platform has none. Then open [http://localhost:3001](http://localhost:3001) and sign in with it.
 
 The first sign-in asks you to add a passkey or set up an authenticator app. Until one of them is on the account, the API lets a platform admin do nothing else. Later sign-ins ask for the passkey, the app's 6-digit code or a backup code.
 
