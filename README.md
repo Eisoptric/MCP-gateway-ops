@@ -24,7 +24,7 @@ Set `API_URL` to change the API origin (see `.env.example`), then restart `next 
 - The session is the API's `HttpOnly` cookie, passed through the `/gateway-api` rewrite. The console stores no token.
 - The password is hashed in the browser (Argon2id, then HKDF), and only the result is sent. The labels (`eisoptric-login-v1`, `eisoptric-argon2-salt-v1`, `eisoptric-login-v2`) must match the API's own sign-in page byte for byte. This needs `crypto.subtle`, so serve the console over HTTPS or from `localhost`.
 - Settings has the signed-in operator's own second steps: an authenticator app, and passkeys to add or remove. Having both means a lost device does not lock you out.
-- A passkey belongs to the address it was added from. One made in the customer console does not work here, and the API accepts one only from an origin in its `CORS_ORIGINS`. A passkey alone meets the API's requirement for an operator, and so does an authenticator app.
+- A passkey belongs to the API's `WEBAUTHN_RP_ID`, which is `eisoptric.com` in production, so one added in the customer console also works here and the other way round. The API still accepts one only from an origin in its `CORS_ORIGINS`. A passkey alone meets the API's requirement for an operator, and so does an authenticator app.
 - The API accepts a change authenticated by cookie only from an origin it trusts. `https://ops.eisoptric.com` and `http://localhost:3001` must be in the API's `CORS_ORIGINS`.
 
 ## What it does
