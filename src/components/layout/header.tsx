@@ -17,7 +17,7 @@ export function Header() {
   return (
     <header className="relative flex h-12 shrink-0 items-center border-b border-border bg-background px-5">
       <div className="relative z-10 text-[13px] font-medium tracking-[0.18em] text-foreground">
-        SATURN
+        EISOPTRIC
       </div>
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="text-[13px] font-medium tracking-[0.12em] text-foreground">

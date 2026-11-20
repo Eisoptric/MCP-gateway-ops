@@ -7,5 +7,5 @@ export function SectionLabel({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={cn("saturn-label", className)}>{children}</div>;
+  return <div className={cn("ops-label", className)}>{children}</div>;
 }

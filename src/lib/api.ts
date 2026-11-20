@@ -6,7 +6,7 @@ import {
   type PasskeyRequestOptions,
 } from "@/lib/webauthn";
 
-const API_BASE = "/saturn-api";
+const API_BASE = "/gateway-api";
 
 export class ApiError extends Error {
   constructor(

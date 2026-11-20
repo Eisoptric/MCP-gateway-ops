@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: "/saturn-api/:path*",
+        source: "/gateway-api/:path*",
         destination: `${apiUrl}/:path*`,
       },
     ];

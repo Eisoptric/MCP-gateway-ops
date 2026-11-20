@@ -1,4 +1,4 @@
-name: Deploy Dashboard to Cloud Run
+name: Deploy Ops to Cloud Run
 
 on:
   push:
@@ -14,9 +14,9 @@ env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   GCP_REGION: ${{ vars.GCP_REGION }}
   GAR_LOCATION: ${{ vars.GAR_LOCATION }}
-  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY || 'saturn' }}
-  CLOUD_RUN_SERVICE: ${{ vars.DASHBOARD_CLOUD_RUN_SERVICE || 'saturn-dashboard' }}
-  IMAGE_NAME: saturn-dashboard
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY || 'gateway' }}
+  CLOUD_RUN_SERVICE: ${{ vars.OPS_CLOUD_RUN_SERVICE || 'gateway-ops' }}
+  IMAGE_NAME: gateway-ops
   API_URL: ${{ vars.BACKEND_PUBLIC_URL }}
 
 jobs:
