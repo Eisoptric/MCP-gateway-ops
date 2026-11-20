@@ -67,4 +67,5 @@ jobs:
             --allow-unauthenticated \
             --port 3001 \
             --set-env-vars "API_URL=${API_URL}" \
+            --set-secrets "ORIGIN_AUTH_SECRET=ORIGIN_AUTH_SECRET:latest" \
             ${RUNTIME_SERVICE_ACCOUNT:+--service-account "$RUNTIME_SERVICE_ACCOUNT"}

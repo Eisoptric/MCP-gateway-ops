@@ -25,4 +25,6 @@ The backend must list `https://ops.eisoptric.com` in its `CORS_ORIGINS`. Session
 
 Serve `ops.eisoptric.com` only behind Cloudflare Access, so that only Eisoptric's operators can reach the sign-in page.
 
+The service answers 403 to any request without the `X-Eisoptric-Origin-Auth` header that Cloudflare adds, so its `run.app` address cannot be used to get around Cloudflare Access. It reads the value from the `ORIGIN_AUTH_SECRET` secret, the same one the API and the customer console use, so its runtime account needs `roles/secretmanager.secretAccessor` on that secret.
+
 The full GCP setup is in the backend repository at `infra/gcp/README.md`.
