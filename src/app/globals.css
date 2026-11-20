@@ -110,3 +110,21 @@
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
+
+/* On a phone, iOS Safari zooms the page into any field whose text is smaller than 16px, and
+   stays zoomed after the keyboard closes. Fields here set text-[13px], so this sits outside every
+   layer on purpose: in the base layer the utilities layer would win over it. The same rule as the
+   customer console's globals.css. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea,
+  [contenteditable="true"] {
+    font-size: 16px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select {
+    min-height: 2.75rem;
+  }
+}
