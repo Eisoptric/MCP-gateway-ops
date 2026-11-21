@@ -86,7 +86,6 @@ export interface AdminStats {
   mcp_errors: number;
   personal: number;
   teams: number;
-  plans: Record<string, number>;
   tool_calls_24h: number;
   approvals_pending: number;
   webhook_failures_24h: number;
@@ -122,7 +121,6 @@ export interface AdminOrg {
   id: string;
   name: string;
   status: string;
-  plan: string;
   kind?: string;
   created_at: string;
   user_count: number;
@@ -153,7 +151,6 @@ export interface AdminAgent {
   id: string;
   name: string;
   description: string;
-  model: string;
   connected: boolean;
   last_seen_at: string | null;
   origin: string | null;
@@ -195,13 +192,6 @@ export interface AdminAllowedHost {
   created_at: string;
 }
 
-export interface AdminSubscription {
-  status: string;
-  plan: string;
-  invoices?: { id: string; status: string; total?: string; amount?: string; period?: string }[];
-  [key: string]: unknown;
-}
-
 export interface AdminOrgDetail extends AdminOrg {
   members: AdminMember[];
   users: AdminUser[];
@@ -220,7 +210,6 @@ export interface AdminOrgDetail extends AdminOrg {
     last_error: string | null;
   };
   allowed_hosts: AdminAllowedHost[];
-  subscription: AdminSubscription | null;
 }
 
 export interface AdminUser {
@@ -265,7 +254,6 @@ export interface AdminMcp {
 export interface AdminActivityRow {
   organization_id: string;
   organization_name: string;
-  plan: string;
   kind?: string;
   tool_calls: number;
   allowed: number;
@@ -492,21 +480,14 @@ export function onboardOrg(body: {
   admin_name: string;
   admin_password?: string;
   admin_title?: string;
-  plan?: string;
   kind?: string;
 }) {
   return post<AdminOrgDetail>("/admin/orgs", body);
 }
 
-/** The plans each kind of account can be on. */
-export const PLANS: Record<string, string[]> = {
-  personal: ["free", "pro"],
-  organization: ["team", "enterprise"],
-};
-
 export function updateOrg(
   id: string,
-  body: Partial<{ name: string; status: string; plan: string }>
+  body: Partial<{ name: string; status: string }>
 ) {
   return patch<AdminOrg>(`/admin/orgs/${id}`, body);
 }

@@ -13,7 +13,7 @@ function count(value: number) {
 }
 
 export default function ActivityPage() {
-  const { t, tOr } = useI18n();
+  const { t } = useI18n();
   const [days, setDays] = useState(30);
   const activity = useActivity(days);
   const rows = useMemo(() => activity.data?.rows ?? [], [activity.data]);
@@ -44,7 +44,7 @@ export default function ActivityPage() {
           <div className="min-w-0">
             <div className="font-medium">{row.organization_name}</div>
             <div className="mt-0.5 text-[12px] text-muted-foreground">
-              {row.kind === "organization" ? t("orgs.team") : t("orgs.personal")} · {tOr(`orgs.${row.plan}`, row.plan)}
+              {row.kind === "organization" ? t("orgs.team") : t("orgs.personal")}
             </div>
           </div>
         ),
@@ -82,7 +82,7 @@ export default function ActivityPage() {
         ),
       },
     ],
-    [t, tOr]
+    [t]
   );
 
   const filters = useMemo<TableFilter<AdminActivityRow>[]>(

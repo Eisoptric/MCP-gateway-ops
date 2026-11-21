@@ -10,7 +10,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { StatusLabel } from "@/components/ui/status-dot";
 import type { StatusTone } from "@/components/ui/status-dot";
 import { useOnboardOrg, useOrgs } from "@/hooks/use-admin";
-import { apiErrorDetail, LOCAL_PASSWORDS, PLANS, type AdminOrg } from "@/lib/api";
+import { apiErrorDetail, LOCAL_PASSWORDS, type AdminOrg } from "@/lib/api";
 import { formatDay, relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "@/stores/toast-store";
@@ -31,7 +31,6 @@ export default function OrgsPage() {
     admin_name: "",
     admin_password: "",
     admin_title: "Admin",
-    plan: "enterprise",
     kind: "organization",
   });
 
@@ -56,14 +55,12 @@ export default function OrgsPage() {
         ),
       },
       {
-        id: "plan",
-        header: t("orgs.plan"),
-        sortValue: (org) => `${org.kind} ${org.plan}`,
+        id: "kind",
+        header: t("orgs.kind"),
+        sortValue: (org) => org.kind ?? "personal",
         cell: (org) => (
           <span className="text-[12px] text-muted-foreground">
             {org.kind === "organization" ? t("orgs.team") : t("orgs.personal")}
-            {" · "}
-            {tOr(`orgs.${org.plan}`, org.plan)}
           </span>
         ),
       },
@@ -168,7 +165,6 @@ export default function OrgsPage() {
                 admin_name: form.admin_name.trim(),
                 admin_password: (LOCAL_PASSWORDS && form.admin_password) || undefined,
                 admin_title: form.admin_title.trim() || "Admin",
-                plan: form.plan,
                 kind: form.kind,
               });
               toast.success(t("orgs.toastCreated", { name: created.name }));
@@ -178,7 +174,6 @@ export default function OrgsPage() {
                 admin_name: "",
                 admin_password: "",
                 admin_title: "Admin",
-                plan: "enterprise",
                 kind: "organization",
               });
             } catch {
@@ -196,27 +191,10 @@ export default function OrgsPage() {
             <SelectField
               label={t("orgs.kind")}
               value={form.kind}
-              onChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  kind: value,
-                  plan: (PLANS[value] ?? []).includes(current.plan) ? current.plan : value === "organization" ? "enterprise" : "free",
-                }))
-              }
+              onChange={(value) => setForm((current) => ({ ...current, kind: value }))}
             >
               <option value="personal">{t("orgs.personal")}</option>
               <option value="organization">{t("orgs.team")}</option>
-            </SelectField>
-            <SelectField
-              label={t("orgs.plan")}
-              value={form.plan}
-              onChange={(value) => setForm((current) => ({ ...current, plan: value }))}
-            >
-              {(PLANS[form.kind] ?? []).map((plan) => (
-                <option key={plan} value={plan}>
-                  {t(`orgs.${plan}`)}
-                </option>
-              ))}
             </SelectField>
             <Field
               label={t("orgs.adminName")}

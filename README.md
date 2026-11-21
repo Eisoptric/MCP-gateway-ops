@@ -29,15 +29,15 @@ Set `API_URL` to change the API origin (see `.env.example`), then restart `next 
 
 ## What it does
 
-- **Overview**: accounts by plan; tool calls, approvals waiting, webhook failures and unreachable MCP servers in the last 24 hours; each service's status and 30-day uptime; recent platform events.
-- **Accounts**: every organization with its plan, members, MCP servers, tool calls in the last 30 days and last activity. The detail page shows:
+- **Overview**: personal and team accounts; tool calls, approvals waiting, webhook failures and unreachable MCP servers in the last 24 hours; each service's status and 30-day uptime; recent platform events.
+- **Accounts**: every organization with its account type, members, MCP servers, tool calls in the last 30 days and last activity. The detail page shows:
   - members with their sign-in security;
   - agents and when each last connected;
   - MCP servers and the hosts the account approved itself;
   - policies and tool sets;
-  - approvals, webhook delivery and the subscription.
+  - approvals and webhook delivery.
 
-  From there you can suspend or reactivate the account, change its plan, add or disable a member, and send a password reset.
+  From there you can suspend or reactivate the account, add or disable a member, and send a password reset.
 - **Users**: everyone across accounts, with their second factors and last sign-in.
 - **MCP**: every connected server by host, whether the host is from the marketplace or approved by the account, and whether the gateway can reach it.
 - **Activity**: per account and per day, tool calls by policy decision (allowed, needed approval, denied), how approvals ended, and webhook deliveries.
