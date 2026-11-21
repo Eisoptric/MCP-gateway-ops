@@ -12,8 +12,17 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { StatusLabel } from "@/components/ui/status-dot";
 import type { StatusTone } from "@/components/ui/status-dot";
 import { useCreateMember, useOrg, useResetMemberPassword, useUpdateMember, useUpdateOrg } from "@/hooks/use-admin";
-import { apiErrorDetail, LOCAL_PASSWORDS, PLANS, type AdminAgent, type AdminMember } from "@/lib/api";
-import { formatDay } from "@/lib/format";
+import {
+  apiErrorDetail,
+  LOCAL_PASSWORDS,
+  PLANS,
+  type AdminAgent,
+  type AdminMcpServer,
+  type AdminMember,
+  type AdminPolicy,
+  type AdminUser,
+} from "@/lib/api";
+import { formatDay, relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "@/stores/toast-store";
 
@@ -25,7 +34,7 @@ type PendingChange =
   | { kind: "reset"; member: AdminMember };
 
 function tone(status: string): StatusTone {
-  if (["active", "connected", "ok", "healthy", "app"].includes(status)) return "active";
+  if (["active", "connected", "ok", "healthy"].includes(status)) return "active";
   if (["trial", "degraded", "missing"].includes(status)) return "pending";
   if (status === "none") return "paused";
   return "disconnected";
@@ -53,6 +62,7 @@ export default function OrgDetailPage() {
   });
   const [pending, setPending] = useState<PendingChange | null>(null);
   const data = org.data;
+  const security = useMemo(() => new Map((data?.users ?? []).map((user) => [user.id, user])), [data?.users]);
   const activeAdminCount = data?.members.filter((member) => member.status === "active" && isOrgAdmin(member)).length ?? 0;
   const { mutate: setMemberStatus, isPending: memberUpdating } = updateMember;
 
@@ -86,6 +96,12 @@ export default function OrgDetailPage() {
             {t(`orgs.${member.status === "active" ? "active" : "disabled"}`)}
           </StatusLabel>
         ),
+      },
+      {
+        id: "signIn",
+        header: t("users.signIn"),
+        sortValue: (member) => security.get(member.user_id)?.last_sign_in_at ?? "",
+        cell: (member) => <SignIn user={security.get(member.user_id)} />,
       },
       {
         id: "actions",
@@ -123,7 +139,7 @@ export default function OrgDetailPage() {
         },
       },
     ],
-    [t, tOr, activeAdminCount, memberUpdating, setMemberStatus]
+    [t, tOr, activeAdminCount, memberUpdating, setMemberStatus, security]
   );
 
   const memberFilters = useMemo<TableFilter<AdminMember>[]>(
@@ -148,27 +164,101 @@ export default function OrgDetailPage() {
     () => [
       {
         id: "name",
-        header: t("orgs.userName"),
+        header: t("orgs.agent"),
         sortValue: (agent) => agent.name,
-        cell: (agent) => <span className="font-medium">{agent.name}</span>,
+        cell: (agent) => (
+          <div className="min-w-0">
+            <div className="font-medium">{agent.name}</div>
+            {agent.registered_user_email ? (
+              <div className="mt-0.5 text-[12px] text-muted-foreground">{agent.registered_user_email}</div>
+            ) : null}
+          </div>
+        ),
       },
       {
-        id: "model",
-        header: t("orgs.model"),
-        sortValue: (agent) => agent.model,
-        cell: (agent) => <span className="font-mono text-[12px] text-muted-foreground">{agent.model}</span>,
+        id: "client",
+        header: t("orgs.client"),
+        sortValue: (agent) => agent.origin ?? "",
+        cell: (agent) => (
+          <span className="text-[12px] text-muted-foreground">
+            {agent.origin === "gateway_mcp" ? t("orgs.viaGateway") : agent.origin ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "seen",
+        header: t("orgs.lastSeen"),
+        align: "right",
+        sortValue: (agent) => agent.last_seen_at ?? "",
+        cell: (agent) => (
+          <StatusLabel tone={agent.connected ? "active" : "paused"}>
+            {agent.last_seen_at ? relativeTime(agent.last_seen_at, locale) : t("orgs.never")}
+          </StatusLabel>
+        ),
+      },
+    ],
+    [t, locale]
+  );
+
+  const serverColumns = useMemo<Column<AdminMcpServer>[]>(
+    () => [
+      {
+        id: "name",
+        header: t("mcp.server"),
+        sortValue: (server) => server.name,
+        cell: (server) => (
+          <div className="min-w-0">
+            <div className="font-medium">{server.name}</div>
+            {server.endpoint ? (
+              <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{server.endpoint}</div>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "tools",
+        header: t("mcp.tools"),
+        align: "right",
+        sortValue: (server) => server.tools.length,
+        cell: (server) => <span className="font-mono">{server.tools.length}</span>,
+      },
+      {
+        id: "status",
+        header: t("mcp.status"),
+        align: "right",
+        sortValue: (server) => server.status,
+        cell: (server) => <StatusLabel tone={tone(server.status)}>{tOr(`mcp.${server.status}`, server.status)}</StatusLabel>,
+      },
+    ],
+    [t, tOr]
+  );
+
+  const policyColumns = useMemo<Column<AdminPolicy>[]>(
+    () => [
+      { id: "name", header: t("orgs.policy"), sortValue: (policy) => policy.name, cell: (policy) => <span className="font-medium">{policy.name}</span> },
+      {
+        id: "version",
+        header: t("orgs.version"),
+        align: "right",
+        sortValue: (policy) => policy.version,
+        cell: (policy) => <span className="font-mono">v{policy.version}</span>,
+      },
+      {
+        id: "rules",
+        header: t("orgs.rules"),
+        align: "right",
+        sortValue: (policy) => policy.rule_count,
+        cell: (policy) => <span className="font-mono">{policy.rule_count}</span>,
       },
       {
         id: "status",
         header: t("orgs.status"),
         align: "right",
-        sortValue: (agent) => agent.status,
-        cell: (agent) => (
-          <StatusLabel tone={agent.status === "active" ? "active" : "paused"}>{agent.status}</StatusLabel>
-        ),
+        sortValue: (policy) => policy.status,
+        cell: (policy) => <StatusLabel tone={policy.status === "active" ? "active" : "paused"}>{tOr(`orgs.policy_${policy.status}`, policy.status)}</StatusLabel>,
       },
     ],
-    [t]
+    [t, tOr]
   );
 
   const planName = (plan: string) => tOr(`orgs.${plan}`, plan);
@@ -229,9 +319,9 @@ export default function OrgDetailPage() {
   return (
     <QueryGate isPending={org.isPending && !data} isError={org.isError && !data}>
       {!data ? (
-        <div className="px-10 py-10 text-[13px] text-muted-foreground">{t("orgs.notFound")}</div>
+        <div className="px-4 py-6 text-[13px] text-muted-foreground md:px-10 md:py-10">{t("orgs.notFound")}</div>
       ) : (
-        <div className="px-10 py-10">
+        <div className="px-4 py-6 md:px-10 md:py-10">
           <Link href="/orgs" className="text-[12px] text-muted-foreground hover:text-foreground">
             {t("orgs.back")}
           </Link>
@@ -243,27 +333,27 @@ export default function OrgDetailPage() {
           </div>
           <p className="mt-2 font-mono text-[12px] text-muted-foreground">{data.id}</p>
 
-          <div className="mt-8 grid grid-cols-6 gap-6 border-y border-border py-6">
+          <div className="mt-8 grid grid-cols-2 gap-6 border-y border-border py-6 sm:grid-cols-3 lg:grid-cols-6">
             <Metric label={t("orgs.kind")} value={data.kind === "organization" ? t("orgs.team") : t("orgs.personal")} />
-            <Metric label={t("orgs.plan")} value={t(`orgs.${data.plan}`) === `orgs.${data.plan}` ? data.plan : t(`orgs.${data.plan}`)} />
+            <Metric label={t("orgs.plan")} value={planName(data.plan)} />
             <Metric label={t("orgs.users")} value={String(data.user_count)} mono />
             <Metric label={t("orgs.agents")} value={String(data.agent_count)} mono />
-            <Metric label={t("orgs.connections")} value={String(data.connection_count)} mono />
             <Metric
-              label={t("orgs.runtime")}
-              value={data.runtime_status === "app" ? t("orgs.app") : data.runtime_status}
-              status={data.runtime_status}
+              label={t("orgs.mcpServers")}
+              value={data.mcp_error_count ? `${data.connection_count} (${data.mcp_error_count}!)` : String(data.connection_count)}
+              mono
             />
+            <Metric label={t("orgs.toolCalls30d")} value={data.tool_calls_30d.toLocaleString()} mono />
           </div>
 
           <section className="mt-10 max-w-[520px]">
             <SectionLabel className="mb-3">{t("orgs.health")}</SectionLabel>
             <div className="font-mono text-[28px] tracking-tight">{data.health.score}%</div>
             <div className="mt-4 space-y-2 text-[13px]">
-              {(["runtime", "mcp", "agents", "policies", "database"] as const).map((key) => (
+              {(["mcp", "agents", "policies", "database"] as const).map((key) => (
                 <div key={key} className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{key}</span>
-                  <StatusLabel tone={tone(data.health[key])}>{data.health[key]}</StatusLabel>
+                  <span className="text-muted-foreground">{t(`orgs.health_${key}`)}</span>
+                  <StatusLabel tone={tone(data.health[key])}>{tOr(`orgs.check_${data.health[key]}`, data.health[key])}</StatusLabel>
                 </div>
               ))}
             </div>
@@ -334,7 +424,7 @@ export default function OrgDetailPage() {
             }}
           >
             <SectionLabel>{t("orgs.addUser")}</SectionLabel>
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <Field
                 label={t("orgs.userName")}
                 value={userForm.name}
@@ -405,6 +495,61 @@ export default function OrgDetailPage() {
             />
           </section>
 
+          <section className="mt-10">
+            <SectionLabel className="mb-3">{t("orgs.mcpServers")}</SectionLabel>
+            <DataTable rows={data.mcp_servers} columns={serverColumns} rowKey={(server) => server.id} empty={t("orgs.noServers")} />
+            {data.allowed_hosts.length > 0 ? (
+              <div className="mt-4 text-[12px] text-muted-foreground">
+                {t("orgs.ownHosts")}{" "}
+                {data.allowed_hosts.map((host) => (
+                  <span key={host.host} className="mr-2 font-mono text-foreground">
+                    {host.host}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="mt-10">
+            <SectionLabel className="mb-3">{t("orgs.policies")}</SectionLabel>
+            <p className="mb-4 text-[12px] text-muted-foreground">{t("orgs.toolSets", { n: data.tool_set_count })}</p>
+            <DataTable rows={data.policies} columns={policyColumns} rowKey={(policy) => policy.id} empty={t("orgs.noPolicies")} />
+          </section>
+
+          <div className="mt-10 grid gap-10 lg:grid-cols-3">
+            <section>
+              <SectionLabel className="mb-3">{t("orgs.approvals")}</SectionLabel>
+              <Line label={t("orgs.pendingNow")} value={data.approvals.pending} warn={data.approvals.pending > 0} />
+              <Line label={t("orgs.approved30d")} value={data.approvals.approved_30d} />
+              <Line label={t("orgs.rejected30d")} value={data.approvals.rejected_30d} />
+              <Line label={t("orgs.expired30d")} value={data.approvals.expired_30d} warn={data.approvals.expired_30d > 0} />
+            </section>
+            <section>
+              <SectionLabel className="mb-3">{t("orgs.webhooks")}</SectionLabel>
+              <Line label={t("orgs.endpoints")} value={`${data.webhooks.enabled} / ${data.webhooks.endpoints}`} />
+              <Line label={t("orgs.delivered30d")} value={data.webhooks.delivered_30d} />
+              <Line label={t("orgs.failed30d")} value={data.webhooks.failed_30d} warn={data.webhooks.failed_30d > 0} />
+              {data.webhooks.last_failure_at ? (
+                <p className="mt-2 text-[12px] text-muted-foreground">
+                  {t("orgs.lastFailure", { when: relativeTime(data.webhooks.last_failure_at, locale) })}
+                  {data.webhooks.last_error ? <span className="block truncate font-mono text-destructive">{data.webhooks.last_error}</span> : null}
+                </p>
+              ) : null}
+            </section>
+            <section>
+              <SectionLabel className="mb-3">{t("orgs.subscription")}</SectionLabel>
+              {data.subscription ? (
+                <>
+                  <Line label={t("orgs.plan")} value={planName(String(data.subscription.plan ?? data.plan))} />
+                  <Line label={t("orgs.billingStatus")} value={tOr(`orgs.billing_${data.subscription.status}`, String(data.subscription.status))} />
+                  <Line label={t("orgs.invoices")} value={data.subscription.invoices?.length ?? 0} />
+                </>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">—</p>
+              )}
+            </section>
+          </div>
+
           <ConfirmDialog
             open={Boolean(confirm)}
             onClose={() => setPending(null)}
@@ -442,6 +587,34 @@ function Metric({
       ) : (
         <div className={`mt-3 text-[22px] tracking-tight ${mono ? "font-mono" : ""}`}>{value}</div>
       )}
+    </div>
+  );
+}
+
+function Line({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
+  return (
+    <div className="flex items-center justify-between border-b border-border py-2 text-[13px]">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-mono ${warn ? "text-warning" : ""}`}>{typeof value === "number" ? value.toLocaleString() : value}</span>
+    </div>
+  );
+}
+
+/** How a person signs in: their second factors, and when they last did. */
+function SignIn({ user }: { user: AdminUser | undefined }) {
+  const { t, locale } = useI18n();
+  if (!user) return <span className="text-muted-foreground">—</span>;
+  const factors = [
+    user.passkeys ? t("users.passkeyCount", { n: user.passkeys }) : null,
+    user.totp_enabled ? t("users.totp") : null,
+    user.email_mfa ? t("users.emailCode") : null,
+  ].filter(Boolean);
+  return (
+    <div className="text-[12px]">
+      <div className={factors.length ? "" : "text-warning"}>{factors.join(" · ") || t("users.noSecondFactor")}</div>
+      <div className="mt-0.5 text-muted-foreground">
+        {user.last_sign_in_at ? relativeTime(user.last_sign_in_at, locale) : t("orgs.never")}
+      </div>
     </div>
   );
 }

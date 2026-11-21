@@ -87,7 +87,7 @@ export default function AuditPage() {
 
   return (
     <QueryGate isPending={audit.isPending && !audit.data} isError={audit.isError && !audit.data}>
-      <div className="px-10 py-10">
+      <div className="px-4 py-6 md:px-10 md:py-10">
         <h1 className="text-[22px] font-medium tracking-tight">{t("audit.title")}</h1>
         <p className="mt-2 max-w-xl text-[13px] text-muted-foreground">{t("audit.subtitle")}</p>
 

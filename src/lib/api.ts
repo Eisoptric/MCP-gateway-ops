@@ -81,15 +81,23 @@ export interface AdminStats {
   organizations: number;
   users: number;
   agents: number;
+  /** MCP servers connected across organizations. */
   connections: number;
-  personal?: number;
-  teams?: number;
+  mcp_errors: number;
+  personal: number;
+  teams: number;
+  plans: Record<string, number>;
+  tool_calls_24h: number;
+  approvals_pending: number;
+  webhook_failures_24h: number;
 }
 
 export interface AdminService {
   id: string;
   name: string;
   status: string;
+  /** Percent of checks that passed over 30 days; null before the first sample. */
+  uptime_30d: number | null;
 }
 
 export interface AdminEvent {
@@ -116,16 +124,15 @@ export interface AdminOrg {
   status: string;
   plan: string;
   kind?: string;
-  deployment_mode: string;
-  runtime_region: string;
-  runtime_version: string;
   created_at: string;
   user_count: number;
   agent_count: number;
   tool_count: number;
   connection_count: number;
-  runtime_status: string;
   mcp_status: string;
+  mcp_error_count: number;
+  tool_calls_30d: number;
+  last_activity_at: string | null;
 }
 
 export interface AdminMember {
@@ -147,11 +154,15 @@ export interface AdminAgent {
   name: string;
   description: string;
   model: string;
-  status: string;
+  connected: boolean;
+  last_seen_at: string | null;
+  origin: string | null;
+  client_id: string | null;
+  registered_user_email: string | null;
+  tool_set_id: string | null;
 }
 
 export interface AdminHealth {
-  runtime: string;
   mcp: string;
   agents: string;
   policies: string;
@@ -160,11 +171,56 @@ export interface AdminHealth {
   issues: string[];
 }
 
+export interface AdminMcpServer {
+  id: string;
+  name: string;
+  status: string;
+  endpoint?: string;
+  tools: unknown[];
+}
+
+export interface AdminPolicy {
+  id: string;
+  name: string;
+  status: string;
+  version: number;
+  rule_count: number;
+  updated_at: string;
+}
+
+export interface AdminAllowedHost {
+  host: string;
+  organization_id: string;
+  organization_name: string;
+  created_at: string;
+}
+
+export interface AdminSubscription {
+  status: string;
+  plan: string;
+  invoices?: { id: string; status: string; total?: string; amount?: string; period?: string }[];
+  [key: string]: unknown;
+}
+
 export interface AdminOrgDetail extends AdminOrg {
   members: AdminMember[];
+  users: AdminUser[];
   agents: AdminAgent[];
   health: AdminHealth;
-  mcp_servers: { id: string; name: string; status: string; tools: string[] }[];
+  mcp_servers: AdminMcpServer[];
+  policies: AdminPolicy[];
+  tool_set_count: number;
+  approvals: { pending: number; approved_30d: number; rejected_30d: number; expired_30d: number };
+  webhooks: {
+    endpoints: number;
+    enabled: number;
+    delivered_30d: number;
+    failed_30d: number;
+    last_failure_at: string | null;
+    last_error: string | null;
+  };
+  allowed_hosts: AdminAllowedHost[];
+  subscription: AdminSubscription | null;
 }
 
 export interface AdminUser {
@@ -179,19 +235,10 @@ export interface AdminUser {
   title: string | null;
   role: string | null;
   created_at: string;
-}
-
-export interface AdminConnectionChannel {
-  id: string;
-  name: string;
-  status: string;
-  detail: string | null;
-}
-
-export interface AdminOrgConnections {
-  organization_id: string;
-  organization_name: string;
-  channels: AdminConnectionChannel[];
+  passkeys: number;
+  totp_enabled: boolean;
+  email_mfa: boolean;
+  last_sign_in_at: string | null;
 }
 
 export interface AdminMcp {
@@ -207,27 +254,46 @@ export interface AdminMcp {
     status: string;
     tools: number;
     endpoint: string;
+    host: string;
+    source: "marketplace" | "custom";
     error: string | null;
   }[];
+  builtin_hosts: string[];
+  allowed_hosts: AdminAllowedHost[];
 }
 
-export interface AdminUsageRow {
+export interface AdminActivityRow {
   organization_id: string;
   organization_name: string;
   plan: string;
   kind?: string;
-  runs: number;
   tool_calls: number;
+  allowed: number;
+  approval_required: number;
+  denied: number;
+  approvals_approved: number;
+  approvals_rejected: number;
+  approvals_expired: number;
+  webhooks_delivered: number;
+  webhooks_failed: number;
 }
 
-export interface AdminSettings {
-  platform: Record<string, string | number>;
-  security: Record<string, string | number>;
-  infrastructure: {
-    runtime: string;
-    mcp: string;
-    secrets: { id: string; kind: string; configured: boolean }[];
-  };
+export interface AdminActivity {
+  days: number;
+  rows: AdminActivityRow[];
+  daily: { day: string; tool_calls: number; denied: number; approval_required: number }[];
+}
+
+export interface AdminPlatform {
+  revision: string;
+  service: string;
+  cors_origins: string[];
+  webauthn_rp_id: string;
+  session_ttl_days: number;
+  policy_model: { configured: boolean; host: string; model: string };
+  email: { configured: boolean; from_domain: string };
+  sign_in: { google: boolean; github: boolean; seed_email: boolean };
+  secrets: Record<string, boolean>;
   admins: AdminUser[];
 }
 
@@ -389,10 +455,9 @@ export const fetchStats = () => get<AdminStats>("/admin/stats");
 export const fetchOrgs = () => getAll<AdminOrg>("/admin/orgs");
 export const fetchOrg = (id: string) => get<AdminOrgDetail>(`/admin/orgs/${id}`);
 export const fetchUsers = () => getAll<AdminUser>("/admin/users");
-export const fetchConnections = () => get<AdminOrgConnections[]>("/admin/connections");
 export const fetchMcp = () => get<AdminMcp>("/admin/mcp");
-export const fetchUsage = (days?: number) =>
-  get<AdminUsageRow[]>(days ? `/admin/usage?days=${days}` : "/admin/usage");
+export const fetchActivity = (days: number) => get<AdminActivity>(`/admin/activity?days=${days}`);
+export const fetchPlatform = () => get<AdminPlatform>("/admin/platform");
 export const fetchAuditEvents = () => get<string[]>("/admin/audit/events");
 
 export interface AuditQuery {
@@ -413,7 +478,6 @@ export async function fetchAudit(query: AuditQuery) {
   const total = Number(response.headers.get("X-Total-Count"));
   return { items, total: Number.isFinite(total) ? Math.max(total, items.length) : items.length };
 }
-export const fetchSettings = () => get<AdminSettings>("/admin/settings");
 
 /**
  * The API uses an operator-chosen password only in local development. In production it ignores
@@ -442,7 +506,7 @@ export const PLANS: Record<string, string[]> = {
 
 export function updateOrg(
   id: string,
-  body: Partial<{ name: string; status: string; plan: string; deployment_mode: string }>
+  body: Partial<{ name: string; status: string; plan: string }>
 ) {
   return patch<AdminOrg>(`/admin/orgs/${id}`, body);
 }

@@ -39,6 +39,17 @@ export default function McpPage() {
         ),
       },
       {
+        id: "host",
+        header: t("mcp.host"),
+        sortValue: (server) => server.host,
+        cell: (server) => (
+          <div className="min-w-0">
+            <div className="truncate font-mono text-[12px]">{server.host}</div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">{t(`mcp.source_${server.source}`)}</div>
+          </div>
+        ),
+      },
+      {
         id: "organization",
         header: t("mcp.organization"),
         sortValue: (server) => server.organization_name,
@@ -85,17 +96,26 @@ export default function McpPage() {
         ],
         matches: (server, value) => isConnected(server) === (value === "connected"),
       },
+      {
+        id: "source",
+        label: t("mcp.allSources"),
+        options: [
+          { value: "marketplace", label: t("mcp.source_marketplace") },
+          { value: "custom", label: t("mcp.source_custom") },
+        ],
+        matches: (server, value) => server.source === value,
+      },
     ],
     [t]
   );
 
   return (
     <QueryGate isPending={mcp.isPending && !data} isError={mcp.isError && !data}>
-      <div className="px-10 py-10">
+      <div className="px-4 py-6 md:px-10 md:py-10">
         <h1 className="text-[22px] font-medium tracking-tight">{t("mcp.title")}</h1>
         <p className="mt-2 max-w-xl text-[13px] text-muted-foreground">{t("mcp.subtitle")}</p>
 
-        <div className="mt-10 grid grid-cols-4 gap-8 border-y border-border py-7">
+        <div className="mt-8 grid grid-cols-2 gap-6 border-y border-border py-6 sm:grid-cols-4">
           <Stat label={t("mcp.servers")} value={String(data?.servers ?? 0)} />
           <Stat label={t("mcp.tools")} value={String(data?.tools ?? 0)} />
           <Stat label={t("mcp.healthy")} value={String(data?.healthy ?? 0)} />
@@ -107,12 +127,40 @@ export default function McpPage() {
             rows={data?.items ?? []}
             columns={columns}
             rowKey={(server) => server.id}
-            searchText={(server) => `${server.name} ${server.organization_name}`}
+            searchText={(server) => `${server.name} ${server.organization_name} ${server.host}`}
             searchPlaceholder={t("mcp.search")}
             filters={filters}
             empty={t("mcp.empty")}
           />
         </div>
+
+        <section className="mt-12 grid gap-10 lg:grid-cols-2">
+          <div>
+            <SectionLabel className="mb-3">{t("mcp.ownHosts")}</SectionLabel>
+            <p className="mb-3 text-[12px] text-muted-foreground">{t("mcp.ownHostsHint")}</p>
+            {(data?.allowed_hosts ?? []).length === 0 ? (
+              <p className="text-[13px] text-muted-foreground">{t("mcp.noOwnHosts")}</p>
+            ) : (
+              <ul className="divide-y divide-border border-y border-border">
+                {data?.allowed_hosts.map((host) => (
+                  <li key={`${host.organization_id}:${host.host}`} className="flex items-center justify-between gap-4 py-3 text-[13px]">
+                    <span className="min-w-0 truncate font-mono text-[12px]">{host.host}</span>
+                    <Link href={`/orgs/${host.organization_id}`} className="shrink-0 text-muted-foreground hover:text-foreground">
+                      {host.organization_name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <SectionLabel className="mb-3">{t("mcp.builtinHosts", { n: data?.builtin_hosts.length ?? 0 })}</SectionLabel>
+            <p className="mb-3 text-[12px] text-muted-foreground">{t("mcp.builtinHint")}</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-muted-foreground">
+              {data?.builtin_hosts.map((host) => <span key={host}>{host}</span>)}
+            </div>
+          </div>
+        </section>
       </div>
     </QueryGate>
   );
