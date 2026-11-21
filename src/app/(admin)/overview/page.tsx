@@ -9,8 +9,6 @@ import { useOverview } from "@/hooks/use-admin";
 import { relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 
-const PLAN_ORDER = ["free", "pro", "team", "enterprise"];
-
 function serviceTone(status: string): StatusTone {
   if (status === "operational" || status === "connected" || status === "healthy") return "operational";
   if (status === "degraded") return "degraded";
@@ -23,7 +21,6 @@ export default function OverviewPage() {
   const stats = overview.data?.stats;
   const services = overview.data?.services ?? [];
   const events = overview.data?.events ?? [];
-  const plans = stats?.plans ?? {};
 
   return (
     <QueryGate isPending={overview.isPending && !overview.data} isError={overview.isError && !overview.data}>
@@ -33,10 +30,10 @@ export default function OverviewPage() {
           <p className="mt-2 text-[14px] text-muted-foreground md:text-[15px]">{t("overview.subtitle")}</p>
 
           <SectionLabel className="mt-10 mb-3">{t("overview.accounts")}</SectionLabel>
-          <div className="grid grid-cols-2 gap-6 border-y border-border py-6 sm:grid-cols-4">
-            {PLAN_ORDER.map((plan) => (
-              <Stat key={plan} label={tOr(`orgs.${plan}`, plan)} value={plans[plan] ?? 0} href="/orgs" />
-            ))}
+          <div className="grid grid-cols-3 gap-6 border-y border-border py-6">
+            <Stat label={t("overview.personal")} value={stats?.personal ?? 0} href="/orgs" />
+            <Stat label={t("overview.team")} value={stats?.teams ?? 0} href="/orgs" />
+            <Stat label={t("overview.orgs")} value={stats?.organizations ?? 0} href="/orgs" />
           </div>
 
           <SectionLabel className="mt-10 mb-3">{t("overview.last24h")}</SectionLabel>

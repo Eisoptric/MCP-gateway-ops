@@ -15,7 +15,6 @@ import { useCreateMember, useOrg, useResetMemberPassword, useUpdateMember, useUp
 import {
   apiErrorDetail,
   LOCAL_PASSWORDS,
-  PLANS,
   type AdminAgent,
   type AdminMcpServer,
   type AdminMember,
@@ -29,7 +28,6 @@ import { toast } from "@/stores/toast-store";
 /** The change waiting for the operator to confirm. */
 type PendingChange =
   | { kind: "status" }
-  | { kind: "plan"; plan: string }
   | { kind: "disable"; member: AdminMember }
   | { kind: "reset"; member: AdminMember };
 
@@ -261,9 +259,7 @@ export default function OrgDetailPage() {
     [t, tOr]
   );
 
-  const planName = (plan: string) => tOr(`orgs.${plan}`, plan);
-
-  function confirmation(change: PendingChange, name: string, status: string, plan: string) {
+  function confirmation(change: PendingChange, name: string, status: string) {
     switch (change.kind) {
       case "status": {
         const suspending = status !== "suspended";
@@ -279,16 +275,6 @@ export default function OrgDetailPage() {
           },
         };
       }
-      case "plan":
-        return {
-          title: t("orgs.planTitle", { name }),
-          description: t("orgs.planBody", { from: planName(plan), to: planName(change.plan) }),
-          confirmLabel: t("orgs.planConfirm"),
-          run: async () => {
-            await update.mutateAsync({ plan: change.plan });
-            toast.success(t("orgs.toastPlan", { name, plan: planName(change.plan) }));
-          },
-        };
       case "disable":
         return {
           title: t("orgs.disableTitle", { name: change.member.name }),
@@ -314,7 +300,7 @@ export default function OrgDetailPage() {
     }
   }
 
-  const confirm = pending && data ? confirmation(pending, data.name, data.status, data.plan) : null;
+  const confirm = pending && data ? confirmation(pending, data.name, data.status) : null;
 
   return (
     <QueryGate isPending={org.isPending && !data} isError={org.isError && !data}>
@@ -333,9 +319,8 @@ export default function OrgDetailPage() {
           </div>
           <p className="mt-2 font-mono text-[12px] text-muted-foreground">{data.id}</p>
 
-          <div className="mt-8 grid grid-cols-2 gap-6 border-y border-border py-6 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mt-8 grid grid-cols-2 gap-6 border-y border-border py-6 sm:grid-cols-3 lg:grid-cols-5">
             <Metric label={t("orgs.kind")} value={data.kind === "organization" ? t("orgs.team") : t("orgs.personal")} />
-            <Metric label={t("orgs.plan")} value={planName(data.plan)} />
             <Metric label={t("orgs.users")} value={String(data.user_count)} mono />
             <Metric label={t("orgs.agents")} value={String(data.agent_count)} mono />
             <Metric
@@ -367,19 +352,6 @@ export default function OrgDetailPage() {
           </section>
 
           <div className="mt-8 flex flex-wrap items-end gap-3">
-            <SelectField
-              label={t("orgs.changePlan")}
-              value={data.plan}
-              onChange={(plan) => {
-                if (plan !== data.plan) setPending({ kind: "plan", plan });
-              }}
-            >
-              {[...new Set([...(PLANS[data.kind ?? "personal"] ?? []), data.plan])].map((plan) => (
-                <option key={plan} value={plan}>
-                  {planName(plan)}
-                </option>
-              ))}
-            </SelectField>
             <Button
               variant="outline"
               disabled={update.isPending}
@@ -516,7 +488,7 @@ export default function OrgDetailPage() {
             <DataTable rows={data.policies} columns={policyColumns} rowKey={(policy) => policy.id} empty={t("orgs.noPolicies")} />
           </section>
 
-          <div className="mt-10 grid gap-10 lg:grid-cols-3">
+          <div className="mt-10 grid gap-10 lg:grid-cols-2">
             <section>
               <SectionLabel className="mb-3">{t("orgs.approvals")}</SectionLabel>
               <Line label={t("orgs.pendingNow")} value={data.approvals.pending} warn={data.approvals.pending > 0} />
@@ -535,18 +507,6 @@ export default function OrgDetailPage() {
                   {data.webhooks.last_error ? <span className="block truncate font-mono text-destructive">{data.webhooks.last_error}</span> : null}
                 </p>
               ) : null}
-            </section>
-            <section>
-              <SectionLabel className="mb-3">{t("orgs.subscription")}</SectionLabel>
-              {data.subscription ? (
-                <>
-                  <Line label={t("orgs.plan")} value={planName(String(data.subscription.plan ?? data.plan))} />
-                  <Line label={t("orgs.billingStatus")} value={tOr(`orgs.billing_${data.subscription.status}`, String(data.subscription.status))} />
-                  <Line label={t("orgs.invoices")} value={data.subscription.invoices?.length ?? 0} />
-                </>
-              ) : (
-                <p className="text-[13px] text-muted-foreground">—</p>
-              )}
             </section>
           </div>
 
