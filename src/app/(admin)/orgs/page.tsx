@@ -11,7 +11,7 @@ import { StatusLabel } from "@/components/ui/status-dot";
 import type { StatusTone } from "@/components/ui/status-dot";
 import { useOnboardOrg, useOrgs } from "@/hooks/use-admin";
 import { apiErrorDetail, LOCAL_PASSWORDS, PLANS, type AdminOrg } from "@/lib/api";
-import { formatDay } from "@/lib/format";
+import { formatDay, relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "@/stores/toast-store";
 
@@ -82,11 +82,34 @@ export default function OrgsPage() {
         cell: (org) => <span className="font-mono">{org.agent_count}</span>,
       },
       {
-        id: "tools",
-        header: t("orgs.tools"),
+        id: "servers",
+        header: t("orgs.mcpServers"),
         align: "right",
-        sortValue: (org) => org.tool_count,
-        cell: (org) => <span className="font-mono">{org.tool_count}</span>,
+        sortValue: (org) => org.connection_count,
+        cell: (org) => (
+          <span className={`font-mono ${org.mcp_error_count ? "text-warning" : ""}`}>
+            {org.connection_count}
+            {org.mcp_error_count ? ` (${org.mcp_error_count}!)` : ""}
+          </span>
+        ),
+      },
+      {
+        id: "calls",
+        header: t("orgs.toolCalls30d"),
+        align: "right",
+        sortValue: (org) => org.tool_calls_30d,
+        cell: (org) => <span className="font-mono">{org.tool_calls_30d.toLocaleString()}</span>,
+      },
+      {
+        id: "activity",
+        header: t("orgs.lastActivity"),
+        align: "right",
+        sortValue: (org) => org.last_activity_at ?? "",
+        cell: (org) => (
+          <span className="whitespace-nowrap text-[12px] text-muted-foreground">
+            {org.last_activity_at ? relativeTime(org.last_activity_at, locale) : t("orgs.never")}
+          </span>
+        ),
       },
       {
         id: "created",
@@ -129,7 +152,7 @@ export default function OrgsPage() {
 
   return (
     <QueryGate isPending={orgs.isPending && !orgs.data} isError={orgs.isError && !orgs.data}>
-      <div className="px-10 py-10">
+      <div className="px-4 py-6 md:px-10 md:py-10">
         <h1 className="text-[22px] font-medium tracking-tight">{t("orgs.title")}</h1>
         <p className="mt-2 max-w-xl text-[13px] text-muted-foreground">{t("orgs.subtitle")}</p>
 
@@ -164,7 +187,7 @@ export default function OrgsPage() {
           }}
         >
           <SectionLabel>{t("orgs.onboard")}</SectionLabel>
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Field
               label={t("orgs.name")}
               value={form.name}

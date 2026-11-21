@@ -29,14 +29,22 @@ Set `API_URL` to change the API origin (see `.env.example`), then restart `next 
 
 ## What it does
 
-- Overview: organizations, users, agents, connections and system health
-- Organizations: onboard, plan, suspend, tenant users
-- Users: every user across accounts
-- Connections: MCP Gateway status per account
-- MCP: tool ecosystem observability
-- Usage: runs and tool calls, by time range
-- Audit: operator and system actions
-- Settings: platform config metadata (no secret values)
+- **Overview**: accounts by plan; tool calls, approvals waiting, webhook failures and unreachable MCP servers in the last 24 hours; each service's status and 30-day uptime; recent platform events.
+- **Accounts**: every organization with its plan, members, MCP servers, tool calls in the last 30 days and last activity. The detail page shows:
+  - members with their sign-in security;
+  - agents and when each last connected;
+  - MCP servers and the hosts the account approved itself;
+  - policies and tool sets;
+  - approvals, webhook delivery and the subscription.
+
+  From there you can suspend or reactivate the account, change its plan, add or disable a member, and send a password reset.
+- **Users**: everyone across accounts, with their second factors and last sign-in.
+- **MCP**: every connected server by host, whether the host is from the marketplace or approved by the account, and whether the gateway can reach it.
+- **Activity**: per account and per day, tool calls by policy decision (allowed, needed approval, denied), how approvals ended, and webhook deliveries.
+- **Audit**: operator and system events across accounts.
+- **Platform**: what the API runs with: revision, trusted origins, passkey domain, policy model, email, sign-in providers, and whether each secret is set (never its value), plus the platform operators.
+
+Ops looks; it does not act inside an account's own work. It cannot change a policy, decide an approval, or read encrypted tool-call content.
 
 ## Deploy
 

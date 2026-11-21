@@ -7,7 +7,7 @@ import { DataTable, type Column, type TableFilter } from "@/components/ui/data-t
 import { StatusLabel } from "@/components/ui/status-dot";
 import { useUsers } from "@/hooks/use-admin";
 import type { AdminUser } from "@/lib/api";
-import { formatDay } from "@/lib/format";
+import { formatDay, relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 
 export default function UsersPage() {
@@ -65,6 +65,26 @@ export default function UsersPage() {
         ),
       },
       {
+        id: "signIn",
+        header: t("users.signIn"),
+        sortValue: (user) => user.last_sign_in_at ?? "",
+        cell: (user) => {
+          const factors = [
+            user.passkeys ? t("users.passkeyCount", { n: user.passkeys }) : null,
+            user.totp_enabled ? t("users.totp") : null,
+            user.email_mfa ? t("users.emailCode") : null,
+          ].filter(Boolean);
+          return (
+            <div className="text-[12px]">
+              <div className={factors.length ? "" : "text-warning"}>{factors.join(" · ") || t("users.noSecondFactor")}</div>
+              <div className="mt-0.5 text-muted-foreground">
+                {user.last_sign_in_at ? relativeTime(user.last_sign_in_at, locale) : t("orgs.never")}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
         id: "created",
         header: t("users.created"),
         align: "right",
@@ -93,13 +113,28 @@ export default function UsersPage() {
         options: ["active", "disabled"].map((status) => ({ value: status, label: t(`orgs.${status}`) })),
         matches: (user, value) => user.status === value,
       },
+      {
+        id: "factor",
+        label: t("users.allFactors"),
+        options: [
+          { value: "none", label: t("users.noSecondFactor") },
+          { value: "passkey", label: t("users.passkey") },
+          { value: "operator", label: t("users.operatorsOnly") },
+        ],
+        matches: (user, value) =>
+          value === "none"
+            ? !user.passkeys && !user.totp_enabled && !user.email_mfa
+            : value === "passkey"
+              ? user.passkeys > 0
+              : user.is_platform_admin,
+      },
     ],
     [t]
   );
 
   return (
     <QueryGate isPending={users.isPending && !users.data} isError={users.isError && !users.data}>
-      <div className="px-10 py-10">
+      <div className="px-4 py-6 md:px-10 md:py-10">
         <h1 className="text-[22px] font-medium tracking-tight">{t("users.title")}</h1>
         <p className="mt-2 max-w-xl text-[13px] text-muted-foreground">{t("users.subtitle")}</p>
 

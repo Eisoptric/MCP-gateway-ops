@@ -3,15 +3,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createOrgMember,
+  fetchActivity,
   fetchAudit,
   fetchAuditEvents,
-  fetchConnections,
   fetchMcp,
   fetchOrg,
   fetchOrgs,
   fetchOverview,
-  fetchSettings,
-  fetchUsage,
+  fetchPlatform,
   fetchUsers,
   onboardOrg,
   resetOrgMemberPassword,
@@ -40,10 +39,6 @@ export function useOrg(id: string) {
   });
 }
 
-export function useConnections() {
-  return useQuery({ queryKey: ["admin-connections"], queryFn: fetchConnections });
-}
-
 export function useMcp() {
   return useQuery({ queryKey: ["admin-mcp"], queryFn: fetchMcp });
 }
@@ -52,11 +47,11 @@ export function useUsers() {
   return useQuery({ queryKey: usersQueryKey, queryFn: fetchUsers });
 }
 
-/** `days` limits usage to the last N days; omit it for all time. */
-export function useUsage(days?: number) {
+/** Tool calls, policy decisions, approvals and webhooks over the last `days` days. */
+export function useActivity(days: number) {
   return useQuery({
-    queryKey: ["admin-usage", days ?? "all"],
-    queryFn: () => fetchUsage(days),
+    queryKey: ["admin-activity", days],
+    queryFn: () => fetchActivity(days),
     placeholderData: keepPreviousData,
   });
 }
@@ -91,8 +86,8 @@ export function useAuditEvents() {
   return useQuery({ queryKey: ["admin-audit-events"], queryFn: fetchAuditEvents });
 }
 
-export function useSettings() {
-  return useQuery({ queryKey: ["admin-settings"], queryFn: fetchSettings });
+export function usePlatform() {
+  return useQuery({ queryKey: ["admin-platform"], queryFn: fetchPlatform });
 }
 
 export function useOnboardOrg() {
